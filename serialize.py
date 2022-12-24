@@ -2,7 +2,8 @@ import sys
 import os
 import subprocess
 from collections import defaultdict, deque
-
+from itertools import combinations
+import json
 import shapely
 import pandas as pd
 import geopandas as gpd
@@ -107,28 +108,34 @@ def combine_holypolygons(geodata):
     """
     This function takes a GeoDataFrame and combines all the polygons that are encased within another polygon.
     Arguments:
-        geodata - GeoPandas GeoDataFrame. 
+        geodata - GeoPandas GeoDataFrame with integrated precinct/block geodata.
     Returns:
         modified_geodata - non-holy GeoDataFrame
     """
+    # Use minimum x coordinate to idenfiy holes
     min_xes = {}
     hole_geoids = []
+    # Generate minimum x coordinates
     for geoid, row in geodata.iterrows():
         min_xes[row["geometry"].min_x] = geoid
     for geoid, row in geodata.iterrows():
         interiors = row["geometry"].interiors
+        # Check if there's actually a hole that needs to be fixed
         if len(interiors) > 0:
             for interior in interiors:
                 min_x = interior.min_x
                 max_x = interior.max_x
                 min_y = interior.min_y
                 max_y = interior.max_y
+                # Get the id of the hole NOTE: PROBABLY THE PROBLEM for debugging
                 hole_id = min_xes[min_x]
                 hole_row = geodata[hole_id]
                 hole_max_x = hole_row["geometry"].max_x
                 hole_min_y = hole_row["geometry"].min_y
                 hole_max_y = hole_row["geometry"].max_y
+                # Check to make sure the hole actually fits
                 if max_x == hole_max_x and max_y == hole_max_y and min_y == hole_min_y:
+                    # Add the data from the hole to the surrounding precinct/block
                     row["total_pop"] += hole_row["total_pop"]
                     row["total_white"] += hole_row["total_white"]
                     row["total_hispanic"] += hole_row["total_hispanic"]
@@ -141,18 +148,19 @@ def combine_holypolygons(geodata):
                     row["total_dem"] += hole_row["total_dem"]
                     row["total_rep"] += hole_row["total_rep"]
                     hole_geoids.append(hole_id)
+    # Delete the holes
     modified_geodata = geodata.drop(hole_geoids)
     return modified_geodata
 
 
-def connect_islands(geodata):
-    """ 
-    This function takes a GeoDataFrame and connects blocks/precincts wout connections to their nearest block/precinct. 
-    """
 
 def convert_to_graph(geodata):
     """
     This function converts a GeoDataFrame into a networkx Graph. 
+    Arguments:
+        geodata - GeoPandas GeoDataFrame with integrated precinct/block geodata.
+    Returns:
+        graph - Networkx Graph representing the integrated precinct/block geodata. 
     """
     geometry_to_id = {}
     min_xes = {}
@@ -173,9 +181,11 @@ def convert_to_graph(geodata):
         current_geometry = geodata[current_geoid]["geometry"]
         current_max = current_geometry.max_x
         other_geoids = []
+        # Add precincts/blocks which could theoretically border our current block
         while min_xes[i] < current_max:
             sliding_scale.append(min_xes_list[i])
             other_geoids.append(min_xes[min_xes_list[i]])
+        # Test to see if they actually border that block.
         for other_geoid in other_geoids:
             other_geometry = geodata[current_geoid]["geometry"]
             intersection = current_geometry.intersection(other_geometry)
@@ -188,6 +198,90 @@ def convert_to_graph(geodata):
     for edge in edges:
         graph.add_edge(edge[0], edge[1])
     return graph
+
+def connect_islands(graph):
+    """ 
+    This function takes a GeoDataFrame and connects blocks/precincts wout connections to their nearest block/precinct.
+    Arguments:
+        graph - Networkx Graph of the integrated precinct/block geodata.
+    Returns:
+        graph - A single contiguous Networkx Graph of the integrated precinct/block geodata.
+    """
+    graph_components = list(nx.algorithms.connected_components(graph))
+    # Compute centroids
+    centroid_dict = {geoid : graph.nodes[geoid]["geometry"].centroid for geoid in graph.nodes}
+    if len(graph_components) == 1:
+        return graph
+    # Maps the minimum distance between two components to their indexes
+    graph_distance_to_connections = {}
+    # Maps component indexes to the minimum distance between them
+    graph_connections_to_distance = {}
+    # Maps component indexes to node geoid tuple
+    components_to_nodes = {}
+    # Iterate through all combinations and find the smallest distances
+    for combo in combinations([num for num in range(0, len(graph_components))], 2):
+        # Combo is an int index for its position in the graph components list
+        component = graph_components[combo[0]]
+        other_component = graph_components[combo[1]]
+        min_distance = 1e10
+        for node in component.nodes:
+            for other_node in other_component.nodes:
+                distance = centroid_dict[node].dist(centroid_dict[other_node])
+                if distance < min_distance:
+                    min_connection = (node, other_node)
+                    min_distance = distance
+        components_to_nodes[(combo[0], combo[1])] = min_connection
+
+        graph_distance_to_connections[min_distance] = (combo[0], combo[1])
+
+        graph_connections_to_distance[(combo[0], combo[1])] = min_distance
+
+    graph_components_num = len(graph_components)
+    for i in range(0, graph_components_num-2):
+        min_distance = min(graph_distance_to_connections.keys())
+        overall_min_connection = graph_distance_to_connections[min_distance]
+        graph.add_edge(components_to_nodes[overall_min_connection][0], components_to_nodes[overall_min_connection][1])
+        # Compare the other possibilities and their distances to both newly connected components to find which one
+        # is better to keep
+        for i in range(0, len(graph_components)):
+            if i in overall_min_connection:
+                continue
+            first_distance = graph_connections_to_distance[(overall_min_connection[0], graph_components[i])]
+            second_distance = graph_connections_to_distance[(overall_min_connection[1], graph_components[i])]
+            if first_distance <= second_distance:
+                # Nothing needs to be changed, just the second comonent needs to be deleted
+                if i < overall_min_connection[1]:
+                    # If the graph component in question 
+                    del graph_connections_to_distance[(graph_components[i], overall_min_connection[1])]
+                    del components_to_nodes[(graph_components[i], overall_min_connection[1])]
+                else:
+                    del graph_connections_to_distance[(overall_min_connection[1], graph_components[i])]
+                    del components_to_nodes[(overall_min_connection[1], graph_components[i])]
+                del graph_distance_to_connections[second_distance]
+            else:
+                # The first distance needs to be changed and component to nodes dict needs to be changed
+                if i < overall_min_connection[0]:
+                    graph_connections_to_distance[(graph_components[i], overall_min_connection[0])] = second_distance
+                    graph_distance_to_connections[second_distance] = (graph_components[i], overall_min_connection[0])
+                    components_to_nodes[graph_components[i], overall_min_connection[0]] = components_to_nodes[graph_components[i], overall_min_connection[1]]
+                else:
+                    graph_connections_to_distance[(overall_min_connection[0], graph_components[i])] = second_distance
+                    graph_distance_to_connections[second_distance] = (overall_min_connection[0], graph_components[i])
+                    components_to_nodes[(overall_min_connection[0], graph_components[i])] = components_to_nodes[(overall_min_connection[1], graph_components[i])]
+                # Then the second distance needs to be deleted
+                if i < overall_min_connection[1]:
+                    del graph_connections_to_distance[graph_components[i], overall_min_connection[1]]
+                    del components_to_nodes[graph_components[i], overall_min_connection[1]]
+                else:
+                    del graph_connections_to_distance[(overall_min_connection[1], graph_components[i])]
+                    del components_to_nodes[(overall_min_connection[1], graph_components[i])]
+                del graph_distance_to_connections[first_distance]
+        del graph_components[overall_min_connection[1]]
+        # del graph_components_dict[overall_min_connection[1]]
+    # nx.algorithms.number_connected_components(graph)
+    return graph
+
+
 def extract_state(year, state):
     """
     This function takes a year and state and returns all the uncompressed data files in that state's folder. 
@@ -431,12 +525,20 @@ def serialize(year, state):
 
     geodata_graph = convert_to_graph(combined_geodata)
     block_geodata_graph = convert_to_graph(combined_block_geodata)
-    connect_islands()
+
+    connected_geodata = connect_islands(geodata_graph)
+    connected_block_geodata = connect_islands(block_geodata_graph)
 
 
-    data = nx.readwrite.json_graph.adjacency_data(G)
-    H = nx.readwrite.json_graph.adjacency_graph(data)
+    data = nx.readwrite.json_graph.adjacency_data(connected_geodata)
+    adjacency_geodata = nx.readwrite.json_graph.adjacency_graph(data)
+
+    data = nx.readwrite.json_graph.adjacency_data(connected_block_geodata)
+    adjacency_block_geodata = nx.readwrite.json_graph.adjacency_graph(data)
+
+    with open(f"{year}/{state}.json", "w") as f:
+        json.dump(f)
 
 if __name__ == "__main__":
-    compress_all()
-    # serialize(2020, "vermont")
+    # compress_all()
+    serialize(2020, "vermont")

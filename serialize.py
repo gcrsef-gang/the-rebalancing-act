@@ -47,10 +47,10 @@ def split_multipolygons(geodata, assignment=None, block_data=None):
     row_geoids_to_remove = []
     rows_to_add = []
     for geoid, row in geodata.iterrows():
-        if type(row["geometry"]) == shapely.MultiPolygon:
-            if assignment:
+        if type(row["geometry"]) == shapely.geometry.MultiPolygon:
+            if type(assignment) == pd.Series:
                 # Precinct geodata, which means the values can be aggregated upwards for each precinct. 
-                blocks= block_data.groupby(assignment)[geodata]
+                blocks = block_data[assignment[assignment["precinct"] == geoid].index]
                 used = []
                 id = 1
                 for polygon in polygons:
@@ -390,13 +390,18 @@ def serialize(year, state):
             demographics = demographics[["GEOID20", "Tot_2020_tot", "Wh_2020_tot", "His_2020_tot", "BlC_2020_tot", "NatC_2020_tot","AsnC_2020_tot", "PacC_2010_tot","Tot_2020_vap"]]
         # NOTE: Categories will not add up to 100%, but each percentage of the total will be accurate for how many poeple
         # in the population are of some race, either alone or in combination with another race
-        demographics.rename(["geoid", "total_pop", "total_white", "total_hispanic", "total_black", "total_native", "total_asian", "total_islander", "total_vap"], inplace=True)
+        demographics.columns = ["geoid", "total_pop", "total_white", "total_hispanic", "total_black", "total_native", "total_asian", "total_islander", "total_vap"]
+        # Convert geoid column to str
+        demographics["geoid"] = demographics["geoid"].astype(str)
         demographics.set_index("geoid", inplace=True)
         demographics.index.names = ['geoid']
-        # geodata.rename(columns={geoid_name : "geoid"}, inplace=True)
         geodata.set_index(geoid_name, inplace=True)
         geodata.index.names = ['geoid']
-        geodata = geodata.join(block_demographics)
+        print(demographics)
+        print(geodata)
+        geodata = geodata.join(demographics)
+        print(geodata)
+    print("Precinct demographics/geodata joined")
 
     # Join block demographics and geodata
     if year == 2010:
@@ -411,49 +416,18 @@ def serialize(year, state):
         block_demographics["total_islander"] = 0
         # NOTE: Precinct data includes Hispanic-other race combos in the other race as well, block data does not
         for column in block_demographics.columns:
+            if "Annotation" in column:
+                continue
             if "Black or African American" in column:
                 block_demographics["total_black"] += block_demographics[column]
-        for column in block_demographics.columns:
             if "American Indian and Alaska Native" in column:
                 block_demographics["total_native"] += block_demographics[column]
-        for column in block_demographics.columns:
             if "Asian" in column:
                 block_demographics["total_asian"] += block_demographics[column]
-        for column in block_demographics.columns:
             if "Native Hawaiian and Other Pacific Islander" in column:
                 block_demographics["total_islander"] += block_demographics[column]
-            # block_demographics["Total!!Not Hispanic or Latino!!Population of one race!!Black or African American alone"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of two races!!White; Black or African American"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of two races!!Black or African American; American Indian and Alaska Native"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of two races!!Black or African American; Asian"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of two races!!Black or African American; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of two races!!Black or African American; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!White; Black or African American; American Indian and Alaska Native"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!White; Black or African American; Asian"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!White; Black or African American; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!White; Black or African American; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!Black or African American; American Indian and Alaska Native; Asian"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!Black or African American; American Indian and Alaska Native; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!Black or African American; American Indian and Alaska Native; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!Black or African American; Asian; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!Black or African American; Native Hawaiian and Other Pacific Islander; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of three races!!Black or African American; Asian; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!White; Black or African American; American Indian and Alaska Native; Asian"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!White; Black or African American; American Indian and Alaska Native; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!White; Black or African American; American Indian and Alaska Native; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!White; Black or African American; Asian; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!White; Black or African American; Asian; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!White; Black or African American; Native Hawaiian and Other Pacific Islander; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!Black or African American; American Indian and Alaska Native; Asian; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!Black or African American; American Indian and Alaska Native; Asian; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!Black or African American; American Indian and Alaska Native; Native Hawaiian and Other Pacific Islander; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of four races!!Black or African American; Asian; Native Hawaiian and Other Pacific Islander; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of five races!!White; Black or African American; American Indian and Alaska Native; Asian; Native Hawaiian and Other Pacific Islander"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of five races!!White; Black or African American; American Indian and Alaska Native; Asian; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of five races!!White; Black or African American; American Indian and Alaska Native; Native Hawaiian and Other Pacific Islander; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of five races!!White; Black or African American; Asian; Native Hawaiian and Other Pacific Islander; Some Other Race"] + \
-            # block_demographics["Total!!Not Hispanic or Latino!!Two or More Races!!Population of five races!!Black or African American; American Indian and Alaska Native; Asian; Native Hawaiian and Other Pacific Islander; Some Other Race"] + \
     else:
+        block_demographics["Geography"] = block_demographics["Geography"].astype(str)
         block_demographics.set_index("Geography", inplace=True)
         block_demographics["total_pop"] = block_demographics[" !!Total:"]
         block_demographics["total_white"] = block_demographics[" !!Total:!!Not Hispanic or Latino:!!Population of one race:!!White alone"]
@@ -463,60 +437,79 @@ def serialize(year, state):
         block_demographics["total_asian"] = 0
         block_demographics["total_islander"] = 0
         for column in block_demographics.columns:
+            if "Annotation" in column:
+                continue
             if "Black or African American" in column:
                 block_demographics["total_black"] += block_demographics[column]
-        for column in block_demographics.columns:
             if "American Indian and Alaska Native" in column:
                 block_demographics["total_native"] += block_demographics[column]
-        for column in block_demographics.columns:
             if "Asian" in column:
                 block_demographics["total_asian"] += block_demographics[column]
-        for column in block_demographics.columns:
             if "Native Hawaiian and Other Pacific Islander" in column:
                 block_demographics["total_islander"] += block_demographics[column]
     block_demographics.index.names = ['geoid']
     block_demographics = block_demographics[["total_pop", "total_white", "total_hispanic", "total_black", "total_native", "total_asian", "total_islander"]]
     
     # Add VAP data
-    block_vap_data.set_index("Geography")
+    block_vap_data["Geography"] = block_vap_data["Geography"].astype(str)
+    block_vap_data.set_index("Geography", inplace=True)
     block_vap_data.index.names = ['geoid']
-    block_vap_data.rename(["total_vap"])
-    block_demographics.join(block_vap_data)
+    block_vap_data.columns = ["total_vap"]
+    block_demographics = block_demographics.join(block_vap_data)
+    # Drop the 1000000US part from the demographic geoids to conform to the geodata geoids
+    block_demographics.set_index(block_demographics.index.str[9:], inplace=True)
+    print("Block demographics/VAP joined")
 
     block_geodata.set_index(geoid_name, inplace=True)
     block_geodata.index.names = ['geoid']
     block_geodata = block_geodata.join(block_demographics)
-    
+    print("Block demographics/geodata joined")
     # Add election data
     if year == 2020 and state == "maine":  
         pass
     else:
+        election_data[geoid_name] = election_data[geoid_name].astype(str)
         election_data.set_index(geoid_name, inplace=True)
-        election_data.index.names = "geoid"
+        election_data.index.names = ["geoid"]
         if year == 2010:
             election_data = election_data[["Tot_2008_pres","Dem_2008_pres","Rep_2008_pres"]]
         else:            
             election_data = election_data[["Tot_2020_pres","D_2020_pres","R_2020_pres"]]
-        election_data.rename(["total_votes", "total_dem", "total_rep"], inplace=True)
-        geodata.join(election_data)
+        election_data.columns = ["total_votes", "total_dem", "total_rep"]
+        print(geodata)
+        print(election_data)
+        geodata = geodata.join(election_data)
+        print(geodata)
+    # Drop water-only precincts and blocks
     if year == 2010:
-        geodata.drop(geodata[geodata["ALAND10"] == 0])
+        geodata.drop(geodata[geodata["ALAND10"] == 0].index, inplace=True)
+        block_geodata.drop(block_geodata[block_geodata["ALAND10"] == 0].index, inplace=True)
     else:
-        geodata.drop(geodata[geodata["ALAND20"] == 0])
+        geodata.drop(geodata[geodata["ALAND20"] == 0].index, inplace=True)
+        block_geodata.drop(block_geodata[block_geodata["ALAND20"] == 0].index, inplace=True)
 
     # Now that both levels are unified as much as possible, we need to relate them to each other to join them.
     assignment = maup.assign(block_geodata, geodata)
+    assignment.columns = ["precinct"]
+    assignment = assignment.astype(str)
+    assignment = assignment.str[:-2]
+    assignment.to_csv("testing_assignment.csv")
     # Prorate election data from precinct to block level
-    # TODO: Switch this out for CVAP data
     weights = block_geodata.total_vap / assignment.map(geodata.total_vap)
+    print(weights)
     prorated = maup.prorate(assignment, geodata[["total_votes", "total_dem", "total_rep"]], weights)
+    print(prorated)
     block_geodata[["total_votes", "total_dem", "total_rep"]] = prorated.round(3)
-
+    block_geodata[["total_votes", "total_dem", "total_rep"]].fillna(0, inplace=True)
     # Aggregate demographic data to precinct level
     if year == 2020 and state == "maine":
         variables = ["total_pop", "total_white", "total_hispanic", "total_black", "total_native", "total_asian", "total_islander"]
-        geodata[variables] = block_demographics.groupby(assignment).sum()
+        geodata[variables] = block_demographics[variables].groupby(assignment).sum()
     
+    geodata.to_file("testing_geodata.json", driver="GeoJSON")
+    block_geodata.to_file("testing_block_geodata.json", driver="GeoJSON")
+
+    print(assignment)
     split_geodata = split_multipolygons(geodata, assignment, block_geodata)
     split_block_geodata = split_multipolygons(block_geodata)
 

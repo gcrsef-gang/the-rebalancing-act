@@ -21,7 +21,8 @@ import networkx as nx
 
 # The link to the data directory in James' computer
 data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/hte-data-new/raw"
-final_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/hte-data-new/graphs"
+# final_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/hte-data-new/graphs"
+final_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/data"
 
 def compress_all_data(type):
     """
@@ -57,9 +58,37 @@ def compress_simplified_graphs():
             if "simplified" in file:
                 corresponding_file = file[:file.find(".")] + ".7z"
                 full_7z_path = os.path.join(final_dir+"/"+year, corresponding_file)
-                if os.path.isfile(full_7z_path):
+                if not os.path.isfile(full_7z_path):
                     full_path = final_dir + "/" + year + "/" + file
                     subprocess.call(["7z", "a", full_7z_path, full_path])
+
+def merge_graphs():
+    """
+    This function automatically decompresses, merges empty precincts/blocks, and then recompresses.
+    """
+    for year in ["2010", "2020"]:
+        for file in os.listdir(final_dir+"/"+year):
+            if "merged" in file:
+                continue
+            corresponding_file = file[:file.find(".")] + ".json"
+            full_json_path = os.path.join(final_dir+"/"+year, corresponding_file)
+            if not os.path.isfile(full_json_path):
+                subprocess.call(["7z", "e", full_json_path, file])
+            with open(full_json_path, "r") as f:
+                data = json.load(f)
+            graph = nx.readwrite.adjacency_graph(data)
+            merged_graph = merge_empty(graph)
+            merged_data = nx.readwrite.adjacency_data(merged_graph)
+            # for id, data in merged_graph.nodes(data=True):
+                # print(data)
+                # merged_data["geometry"] = shapely.geometry.mapping(data['geometry'])
+            merged_corresponding_file = file[:file.find(".")] + "_merged.json"
+            print(merged_data["nodes"][0])
+            with open(os.path.join(final_dir+"/"+year, merged_corresponding_file), "w") as f:
+                # json.dump(merged_data)
+                json.dump(merged_data["nodes"][1], f)
+                # data_str = json.dumps(merged_data["nodes"][0])
+                # f.write(data_str)
 
 def split_multipolygons(geodata, assignment=None, block_data=None):
     """
@@ -500,9 +529,10 @@ def merge_empty(graph):
     This function takes a graph and merges precincts/blocks with zero people with other precincts/blocks
     """
     empty_nodes = []
-    for node in graph.nodes:
-        if graph[node]["total_pop"] == 0:
-            empty_nodes.append(node)
+    for node in graph.nodes(data=True):
+        node_data = node[1]
+        if node_data["total_pop"] == 0:
+            empty_nodes.append(node[0])
     empty_graph = graph.subgraph(empty_nodes)
     empty_groups = list(nx.algorithms.connected_components(empty_graph))
     for group in empty_groups:
@@ -511,10 +541,12 @@ def merge_empty(graph):
             for other_node in graph.neighbors(node):
                 bordering.add(other_node)
         bordering = bordering.difference(set(group))
-        substituted_node = bordering[0]
-        geometry_union = shapely.ops.urnary_union([node["geometry"] for node in group])
-        print(geometry_union, group)
-        graph[substituted_node]["geometry"] = geometry_union
+        substituted_node = list(bordering)[0]
+        # geometry_union = shapely.ops.unary_union([shapely.geometry.Polygon(graph.nodes[node]["geometry"]["coordinates"]) for node in group])
+        geometry_union = shapely.ops.unary_union([shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group])
+        graph.nodes[substituted_node]["geometry"] = geometry_union
+        graph.remove_nodes_from(group)
+    return graph
 
 def extract_state(year, state):
     """
@@ -937,7 +969,8 @@ def serialize_all():
 
 if __name__ == "__main__":
     # compress_all_data("final")
-    serialize_all()
+    merge_graphs()
+    # serialize_all()
     # serialize(2010, "hawaii", checkpoint="beginning")
     # serialize(2010, "minnesota", checkpoint="integration")
     # serialize(2010, "alabama", checkpoint="geometry")

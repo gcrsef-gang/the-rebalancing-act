@@ -1,1 +1,7 @@
 test*
+
+.vscode/
+
+venv/
+*/__pycache__
+*.egg-info

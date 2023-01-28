@@ -495,6 +495,26 @@ def connect_islands(graph):
         del graph_components_dict[overall_min_connection[1]]
     return graph
 
+def merge_empty(graph):
+    """
+    This function takes a graph and merges precincts/blocks with zero people with other precincts/blocks
+    """
+    empty_nodes = []
+    for node in graph.nodes:
+        if graph[node]["total_pop"] == 0:
+            empty_nodes.append(node)
+    empty_graph = graph.subgraph(empty_nodes)
+    empty_groups = list(nx.algorithms.connected_components(empty_graph))
+    for group in empty_groups:
+        bordering = set()
+        for node in group:
+            for other_node in graph.neighbors(node):
+                bordering.add(other_node)
+        bordering = bordering.difference(set(group))
+        substituted_node = bordering[0]
+        geometry_union = shapely.ops.urnary_union([node["geometry"] for node in group])
+        print(geometry_union, group)
+        graph[substituted_node]["geometry"] = geometry_union
 
 def extract_state(year, state):
     """

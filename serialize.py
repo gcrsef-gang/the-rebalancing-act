@@ -7,6 +7,10 @@ from itertools import combinations
 import json
 import time
 import shapely
+import warnings
+from shapely.errors import ShapelyDeprecationWarning
+warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning) 
+
 import fiona  
 import pandas as pd
 import geopandas as gpd
@@ -19,12 +23,16 @@ import networkx as nx
 data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/hte-data-new/raw"
 final_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/hte-data-new/graphs"
 
-def compress_all():
+def compress_all_data(type):
     """
     This function automatically compresses all data files in the data directory to .7z files
     """
+    if type == "data":
+        dir = data_dir
+    else:
+        dir = final_dir
     for year in ["2010", "2020"]:
-        for root, dirs, files in os.walk(data_dir+"/"+year):
+        for root, dirs, files in os.walk(dir+"/"+year):
             print(root, dirs, files)
             # To hold only files that need to be compressed so that there is no double compression. 
             files_to_compress = []    
@@ -34,11 +42,24 @@ def compress_all():
                     continue
                 full_path = os.path.join(root, file)  
                 corresponding_file = file[:file.find(".")] + ".7z"
-                print(corresponding_file)
+                full_7z_path = os.path.join(final_dir+"/"+year, corresponding_file)
                 if not corresponding_file in files:
-                    files_to_compress.append([os.path.join(root, corresponding_file), full_path])
+                    files_to_compress.append([full_7z_path, full_path])
             for file in files_to_compress:
                     subprocess.call(["7z", "a", file[0], file[1]])
+
+def compress_simplified_graphs():
+    """
+    This function automatically compresses simplified (no geometry) graphs to .7z files. 
+    """
+    for year in ["2010", "2020"]:
+        for file in os.listdir(final_dir+"/"+year):
+            if "simplified" in file:
+                corresponding_file = file[:file.find(".")] + ".7z"
+                full_7z_path = os.path.join(final_dir+"/"+year, corresponding_file)
+                if os.path.isfile(full_7z_path):
+                    full_path = final_dir + "/" + year + "/" + file
+                    subprocess.call(["7z", "a", full_7z_path, full_path])
 
 def split_multipolygons(geodata, assignment=None, block_data=None):
     """
@@ -57,19 +78,18 @@ def split_multipolygons(geodata, assignment=None, block_data=None):
             polygons = row["geometry"].geoms
             if type(assignment) == pd.Series:
                 # Precinct geodata, which means the values can be aggregated upwards for each precinct. 
-                blocks = block_data.loc[assignment[assignment == geoid].index]  
+                blocks = block_data.loc[assignment[assignment == geoid].index]
                 used = []
                 id = 1
                 for polygon in polygons:
-                    new_geoid = geoid + str(id)
+                    new_geoid = geoid + "s" + str(id)
                     new_row = {}
                     # new_row = pd.Series(index=[row.index])
                     # new_row.index.names = [new_geoid]
                     id += 1
                     for block_geoid, block in blocks.iterrows():
                         if not block_geoid in used:
-                            if polygon.intersection(block["geometry"]).area > 0.7*block["geometry"].area:
-                                # for column, value in block_data.loc[block_geoid].iteritems():
+                            if polygon.intersection(block["geometry"]).area > 0.5*block["geometry"].area:
                                 for column, value in row.iteritems():
                                     # Obviously use precinct polygon geometry, not block geometry
                                     if column == "geometry":
@@ -87,6 +107,23 @@ def split_multipolygons(geodata, assignment=None, block_data=None):
                                     else:
                                         new_row[column] = value
                                 used += block_geoid
+                    # The precinct is so small that it didn't match up to any blocks - 
+                    # Add a "fake" row with 0 values inside so that the hole matchings don't create problems
+                    if len(new_row) == 0:
+                        for column, _ in row.iteritems():
+                            # Obviously use precinct polygon geometry, not block geometry
+                            if column == "geometry":
+                                new_row[column] = polygon
+                            elif column == "geoid":
+                                pass
+                            elif column in block_data.columns:
+                                if type(block[column]) in [int, float]:
+                                    new_row[column] = 0
+                                else:
+                                    new_row[column] = None
+                            else:
+                                new_row[column] = None
+                            # print("PROBLEM: No Blocks added in precinct", new_geoid, geoid, blocks, polygon)
                     rows_to_add[new_geoid] = new_row
                 row_geoids_to_remove.append(geoid)
             else:
@@ -160,13 +197,22 @@ def combine_holypolygons(geodata, assignment=None):
                 min_x_list.append([polygon_interior.bounds[0], i])
                 i += 1
     min_x_list = sorted(min_x_list,  key = lambda x: x[0])
+    # No holes! I'm certainly not complaining...
+    if len(min_x_list) == 0:
+        return geodata
     holes_in_holes = set()
     active_holes = [min_x_list[0][1]]
     # Test to see if this hole is a hole of another hole
-    for [min_x, index] in min_x_list:
+    for i, [min_x, index] in enumerate(min_x_list):
         geoid = target_geometry["geoid"][index]
         _, min_y, max_x, max_y = bounds.loc[geoid].astype(float)
         possible = []
+        # Add holes with the same minimum x as well to cover cases were the hole/hole container have same min x
+        j = i
+        while j < len(min_x_list)-1 and abs(min_x_list[j+1][0]-min_x) <= 1e-7:
+            # Will lead to duplication, but it shouldn't matter
+            possible.append(min_x_list[i+1][1])
+            j += 1
         for hole_index in active_holes:
             hole_geoid = target_geometry["geoid"][hole_index]
             hole_max_x = bounds.loc[hole_geoid][2]
@@ -174,21 +220,23 @@ def combine_holypolygons(geodata, assignment=None):
                 possible.append(hole_index)
         active_holes = possible
         active_holes.append(index)
+        # Testing for polygons that could fit around the polygon in question
         for hole_index in possible:
             if hole_index == index:
                 continue
             hole_geoid = target_geometry["geoid"][hole_index]
-            # print(hole_geoid, geoid, sorted(possible), bounds.loc[geoid])
             _, hole_min_y, hole_max_x, hole_max_y = bounds.loc[hole_geoid].astype(float)
-            # print(type(min_y), type(max_x), type(max_y), type(hole_max_x), type(hole_min_y), type(hole_max_y))
             if hole_max_x >= float(max_x) and hole_min_y <= float(min_y) and hole_max_y >= float(max_y):
                 hole_geometry = target_geometry["geometry"][hole_index]
                 geometry = target_geometry["geometry"][index]
-                if hole_geometry.contains(geometry):
+                if geometry.difference(hole_geometry).area < geometry.area * 0.01:
                     holes_in_holes.add(index)
+    # print([target_geometry["geoid"][hole] for hole in holes_in_holes], "holes in holes")
     target_geometry = gpd.GeoDataFrame(target_geometry, crs=geodata.crs)
+    target_geometry.to_file("target_geometry.json", driver="GeoJSON")
     # target_geometry.set_index("geoid", inplace=True)
     target_geometry = target_geometry.drop(list(holes_in_holes))
+    target_geometry.to_file("post_target_geometry.json", driver="GeoJSON")
     # source_geometry = gpd.GeoSeries(source_geometry, crs=geodata.crs)
     source_geometry = geodata
     hole_assignment = maup.assign(source_geometry, target_geometry)
@@ -220,7 +268,7 @@ def combine_holypolygons(geodata, assignment=None):
             geodata.loc[geoid, "total_rep"] += hole_row["total_rep"]
         if abs(target_area-confirmed_area) > 1e-7:
             print(target_area, confirmed_area, "AREA MISMATCH", geoid, current_hole_geoids)
-
+    # print(hole_geoids, "hole geoids")
     # Delete the holes
     modified_geodata = geodata.drop(hole_geoids)
     print(f"{len(hole_geoids)} holes removed")
@@ -259,24 +307,14 @@ def convert_to_graph(geodata):
     current_grouping = 0
     for i, row in enumerate(min_yes_list):
         if current_grouping < dividers-1:
-            if row[1] == "23003743":
-                print("northener one not last", bounds.loc[row[1]][1], bounds.loc[row[1]][3], "/", current_grouping, divider_min_ys[current_grouping+1])
-            if row[1] == "23019664":
-                print("southerner one", bounds.loc[row[1]][1], bounds.loc[row[1]][3], "/", current_grouping, divider_min_ys[current_grouping+1])
             min_y = bounds.loc[row[1]][1]
             max_y = bounds.loc[row[1]][3]
             to_add = 1
             while current_grouping+to_add < dividers and max_y >= divider_min_ys[current_grouping+to_add]:
-                if row[1] == "23003743":
-                    print("northerner double added!")
                 y_groupings[current_grouping+to_add].add(row[1])
                 to_add += 1
             if min_y >= divider_min_ys[current_grouping+1]:
-                if row[1] == "23003743":
-                    print("northerner group increased")
                 current_grouping += 1
-        if row[1] == "23003743":
-            print("northerner one", current_grouping, divider_min_ys[current_grouping])
         y_groupings[current_grouping].add(row[1])
     edges = set()
     edges_added = 0
@@ -315,10 +353,6 @@ def convert_to_graph(geodata):
                 else:
                     # to_remove.append(j)
                     pass
-            if current_geoid == "23003743":
-                print(possible_borders)
-            if current_geoid == "23019664":
-                print(possible_borders, "southerner borders")
             # to_remove.sort(reverse=True)  
             # for index in to_remove:
                 # _ = active_geoids.pop(index)
@@ -329,15 +363,9 @@ def convert_to_graph(geodata):
                 _, other_min_y, _, other_max_y = bounds.loc[other_geoid]
                 if other_min_y > current_max_y or other_max_y < current_min_y:
                     continue
-                if current_geoid == "23003743":
-                    print("possible selection candidates", other_geoid)
-                if current_geoid == "23019664":
-                    print("possible southern selection candidates", other_geoid)
                 other_geometry = geodata.loc[other_geoid, "geometry"]
                 intersection = current_geometry.intersection(other_geometry)
                 attempts += 1
-                if current_geoid == "23019664" and other_geoid == "23003743":
-                    print(shapely.geometry.mapping(intersection), "intersection")
                 if intersection.is_empty or isinstance(intersection, shapely.geometry.Point) or isinstance(intersection, shapely.geometry.MultiPoint):
                     # print("FAILED", current_geoid, other_geoid)
                     continue
@@ -352,14 +380,10 @@ def convert_to_graph(geodata):
                             no_polygons = False
                             break
                     if edge_exists and no_polygons:
-                        if current_geoid == "23019664":
-                            print(other_geoid, "edge actually added")
                         edges.add((current_geoid, other_geoid))
                         edges_added += 1
                 elif isinstance(intersection, shapely.geometry.LineString) or isinstance(intersection, shapely.geometry.MultiLineString):
                     # print("edge added!", [current_geoid, other_geoid])
-                    if current_geoid == "23019664":
-                        print(other_geoid, "edge actually added")
                     edges.add((current_geoid, other_geoid))
                     edges_added += 1
                 else:
@@ -396,7 +420,7 @@ def connect_islands(graph):
     components_to_nodes = {}
     # Iterate through all combinations and find the smallest distances
     for i, combo in enumerate(combinations([num for num in range(0, graph_components_num)], 2)):
-        print(f"\rDistance combination: {i}/{int(graph_components_num*(graph_components_num-1)/2)}", sep="")
+        print(f"\rDistance combination: {i}/{int(graph_components_num*(graph_components_num-1)/2)}", end="")
         # Combo is an int index for its position in the graph components list
         component = graph_components_list[combo[0]]
         other_component = graph_components_list[combo[1]]
@@ -416,7 +440,7 @@ def connect_islands(graph):
         min_distance = min(graph_distance_to_connections.keys())
         overall_min_connection = graph_distance_to_connections[min_distance]
         graph.add_edge(components_to_nodes[overall_min_connection][0], components_to_nodes[overall_min_connection][1])
-        print(f"Edge added: {components_to_nodes[overall_min_connection][0]}, {components_to_nodes[overall_min_connection][1]}")
+        print(f"Edge added: {components_to_nodes[overall_min_connection][0]}, {components_to_nodes[overall_min_connection][1]}, {i}/{graph_components_num}")
         # Now delete the added connection from the lists 
         del graph_distance_to_connections[min_distance]
         del graph_connections_to_distance[overall_min_connection]
@@ -494,57 +518,61 @@ def extract_state(year, state):
         prefix = "block_group_"
     else:
         prefix = ""
-
+    if year == 2010:
+        geoid_name = "GEOID10"
+    else:
+        geoid_name = "GEOID20"
     try:
-        demographics = pd.read_csv(path+prefix+"demographics.csv")
+        demographics = pd.read_csv(path+prefix+"demographics.csv", dtype={geoid_name:"string"})
     except:
-        subprocess.call(["7z", "e", path+prefix+"demographics.7z", "-o"+path+prefix])
+        subprocess.call(["7z", "e", path+prefix+"demographics.7z", "-o"+path])
         # 2020 Maine has no demographic data.
         if str(state) == "maine" and str(year) == "2020":
             demographics = None
         else:
-            demographics = pd.read_csv(path+prefix+"demographics.csv")
+            demographics = pd.read_csv(path+prefix+"demographics.csv", dtype={geoid_name:"string"})
     print("Demographic data loaded")
 
     try:
-        election_data = pd.read_csv(path+prefix+"election_data.csv")
+        election_data = pd.read_csv(path+prefix+"election_data.csv", dtype={geoid_name:"string"})
     # Shouldn't be needed but just in case
     except:
-        subprocess.call(["7z", "e", path+prefix+"election_data.7z", "-o"+path+prefix])
+        subprocess.call(["7z", "e", path+prefix+"election_data.7z", "-o"+path])
         # 2020 Maine has no election data.
         if str(state) == "maine" and str(year) == "2020":
             election_data = None
         else:
-            election_data = pd.read_csv(path+prefix+"election_data.csv")
+            election_data = pd.read_csv(path+prefix+"election_data.csv", dtype={geoid_name:"string"})
     print("Election data loaded")
-
     try:
-        geodata = gpd.read_file(path+prefix+"geodata.json")
+        geodata = gpd.read_file(path+prefix+"geodata.json", dtype={geoid_name:"string"})
     except:
-        print(path+prefix)
-        subprocess.call(["7z", "e", path+prefix+"geodata.7z", "-o"+path+prefix])
-        geodata = gpd.read_file(path+prefix+"geodata.json")
+        subprocess.call(["7z", "e", path+prefix+"geodata.7z", "-o"+path])
+        geodata = gpd.read_file(path+prefix+"geodata.json", dtype={geoid_name:"string"})
+    print(f"Initial number of precincts/block groups: {len(geodata)}")
     print("Geodata loaded")
+    print(geodata, geodata.columns)
 
     try:
         block_demographics = pd.read_csv(path+"block_demographics.csv", skiprows=1)
     except:
-        subprocess.call(["7z", "e", path+"block_demographics.7z", "-o"+path+prefix])
+        subprocess.call(["7z", "e", path+"block_demographics.7z", "-o"+path])
         block_demographics = pd.read_csv(path+"block_demographics.csv", skiprows=1)
     print("Block demographic data loaded")
 
     try:
         block_vap_data = pd.read_csv(path+"block_vap_data.csv")
     except:
-        subprocess.call(["7z", "e", path+"block_vap_data.7z", "-o"+path+prefix])
+        subprocess.call(["7z", "e", path+"block_vap_data.7z", "-o"+path])
         block_vap_data = pd.read_csv(path+"block_vap_data.csv")
     print("Block VAP data loaded")
 
     try:
         block_geodata = gpd.read_file(path+"block_geodata.json")
     except:
-        subprocess.call(["7z", "e", path+"block_geodata.7z", "-o"+path+prefix])
+        subprocess.call(["7z", "e", path+"block_geodata.7z", "-o"+path])
         block_geodata = gpd.read_file(path+"block_geodata.json")
+    print(f"Initial number of blocks: {len(block_geodata)}")
     print("Block geodata data loaded")
 
     return block_demographics, block_vap_data, block_geodata, demographics, geodata, election_data
@@ -562,7 +590,6 @@ def serialize(year, state, checkpoint="beginning"):
         # NOTE: NOT IN USE at the moment due to introducing geometry errors
         cc = CRS('esri:102008')
         geodata = geodata.to_crs(cc)
-        print(geodata)
         block_geodata = block_geodata.to_crs(cc)
         # Join precinct demographics and geodata
         if year == 2020 and state == "maine":
@@ -578,8 +605,6 @@ def serialize(year, state, checkpoint="beginning"):
                 try:
 
                     fake_geoid = str(fips_codes[fips_codes["county_name"] == county]["code"].item()) + str(county_counters[county]+1)
-                    print(fips_codes[fips_codes["county_name"] == county]["code"].item(), "first_part")
-                    print(fake_geoid, "full")
                 except:
                     raise Exception(county)
                 county_counters[county] += 1
@@ -587,7 +612,6 @@ def serialize(year, state, checkpoint="beginning"):
             geodata[geoid_name] = pd.Series(geoid_column)
             geodata.set_index(geoid_name, inplace=True)
             geodata.index.names = ['geoid']
-
         else:
             if year == 2010:
                 geoid_name = "GEOID10"
@@ -609,8 +633,6 @@ def serialize(year, state, checkpoint="beginning"):
 
         # Join block demographics and geodata
         if year == 2010:
-            print(block_demographics)
-            print(block_demographics.columns)
             try:
                 block_demographics["id"] = block_demographics["id"].astype(str)
                 block_demographics.set_index("id", inplace=True)
@@ -702,6 +724,7 @@ def serialize(year, state, checkpoint="beginning"):
             if len(geodata) != len(geodata[geodata["total_pop"] >= geodata["total_vap"]]):
                 print(geodata[["total_pop", "total_vap"]])
                 print(geodata[geodata["total_pop"] < geodata["total_vap"]])
+                print(len(geodata), len(geodata[geodata["total_pop"] >= geodata["total_vap"]]))
                 raise Exception("DATA ISSUE: Higher VAP than TOTAL for precincts")
             if len(block_geodata) != len(block_geodata[block_geodata["total_pop"] >= block_geodata["total_vap"]]):
                 print(block_geodata[["total_pop", "total_vap"]])
@@ -727,12 +750,27 @@ def serialize(year, state, checkpoint="beginning"):
                 print(geodata[geodata["total_vap"] < geodata["total_votes"]])
                 print("POSSIBLE DATA ISSUE: Higher votes than VAP for precincts")
 
+        duplicated_geodata = geodata[geodata.duplicated()]
+        duplicated_block_geodata = block_geodata[block_geodata.duplicated()]
+        # CHECK: There are no repeats in the data that are duplicated. 
+        if len(duplicated_geodata) > 0:
+            print(duplicated_geodata, "DATA ISSUE: DUPLICATIONS IN INTEGRATED GEODATA")
+        if len(duplicated_block_geodata) > 0:
+            print(duplicated_block_geodata, "DATA ISSUE: DUPLICATIONS IN INTEGRATED BLOCK GEODATA")
 
+        # Delete duplicates if they exist
+        geodata.drop_duplicates(inplace=True)
+        block_geodata.drop_duplicates(inplace=True)
+
+        # Drop water precincts
+        print(geodata.index.str.contains("ZZZZZZ"))
+        geodata = geodata[~geodata.index.str.contains("ZZZZZZ")]
         # Now that both levels are unified as much as possible, we need to relate them to each other to join them.
         assignment = maup.assign(block_geodata, geodata)
         assignment.columns = ["precinct"]
         assignment = assignment.astype(str)
-        assignment = assignment.str[:-2]
+        # This essentially converts the precincts from floats to GEOID strings
+        assignment = assignment.str.split('.').str[0]
         # Aggregate demographic data to precinct level
         if year == 2020 and state == "maine":
             variables = ["total_pop", "total_white", "total_hispanic", "total_black", "total_native", "total_asian", "total_islander", "total_vap"]
@@ -747,21 +785,27 @@ def serialize(year, state, checkpoint="beginning"):
         
         geodata.to_file("testing_geodata.json", driver="GeoJSON")
         block_geodata.to_file("testing_block_geodata.json", driver="GeoJSON")
+        # geodata["geoid"] = geodata["geoid"].astype(str)
+        # block_geodata["geoid"] = block_geodata["geoid"].astype(str)
+        # geodata.set_index("geoid", inplace=True)
+        # block_geodata.set_index("geoid", inplace=True)
         assignment.to_csv("testing_assignment.csv")
-    elif checkpoint == "integration":
+    # For incredibly mysterious reasons this may be necessary to prevent problems
+    elif checkpoint == "beginning" or checkpoint == "integration":
         geodata = gpd.read_file("testing_geodata.json", driver="GeoJSON")
         print("Integrated Geodata loaded")
         block_geodata = gpd.read_file("testing_block_geodata.json", driver="GeoJSON")
-        print("Integrated Block Geodata loaded")
         geodata["geoid"] = geodata["geoid"].astype(str)
         block_geodata["geoid"] = block_geodata["geoid"].astype(str)
+        print("Integrated Block Geodata loaded")
         geodata.set_index("geoid", inplace=True)
         block_geodata.set_index("geoid", inplace=True)
         assignment = pd.read_csv("testing_assignment.csv")
 
     if checkpoint == "beginning" or checkpoint == "integration":
+        # print("23013220363!!", geodata.loc["23013220363"])
         split_geodata = split_multipolygons(geodata, assignment, block_geodata)
-        # split_geodata.to_file("testing_split_geodata.json", driver="GeoJSON")
+        split_geodata.to_file("testing_split_geodata.json", driver="GeoJSON")
         split_block_geodata = split_multipolygons(block_geodata)
         print("Multipolygons split")
 
@@ -778,6 +822,7 @@ def serialize(year, state, checkpoint="beginning"):
         print("Holes removed")
         combined_geodata.to_file("testing_combined_geodata.json", driver="GeoJSON")
         combined_block_geodata.to_file("testing_combined_block_geodata.json", driver="GeoJSON")
+
     elif checkpoint == "geometry":
         combined_geodata = gpd.read_file("testing_combined_geodata.json", driver="GeoJSON")
         print("Cleaned Geodata loaded")
@@ -864,17 +909,20 @@ def serialize_all():
             if state:
                 exists = False
                 for file in existing_files:
-                    if state in file:
+                    if file in [state+"_geodata.json", state+"_geodata.7z"]:
                         exists = True
                         break
                 if not exists:
                     serialize(int(year), state, checkpoint="beginning")
 
 if __name__ == "__main__":
-    # compress_all()
-    # serialize_all()
-    serialize(2010, "arkansas", checkpoint="integration")
+    # compress_all_data("final")
+    serialize_all()
+    # serialize(2010, "hawaii", checkpoint="beginning")
+    # serialize(2010, "minnesota", checkpoint="integration")
     # serialize(2010, "alabama", checkpoint="geometry")
+    # serialize(2010, "florida", checkpoint="beginning")
+    # serialize(2010, "florida", checkpoint="integration")
     # serialize(2020, "maine", checkpoint="beginning")
     # serialize(2020, "maine", checkpoint="geometry")
     # serialize(2010, "vermont", checkpoint="beginning")
@@ -883,4 +931,4 @@ if __name__ == "__main__":
     # serialize(2020, "vermont", checkpoint="beginning")
     # serialize(2020, "vermont", checkpoint="integration")
     # serialize(2020, "vermont", checkpoint="geometry")
-    # serialize(2020, "vermont", checkpoint="graph")
+    # serialize(2010, "missouri", checkpoint="graph")

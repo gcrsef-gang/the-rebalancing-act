@@ -110,6 +110,8 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, s
     modified_coords = modify_coords(
         [coords(node) for node in graph_nodes], [2000, 2000]
     )
+
+    print("Coordinates modified")
     
     if colors is not None:
         node_colors = [colors(node) for node in graph_nodes]
@@ -140,6 +142,8 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, s
             width=1
     )
 
+    print("Edges drawn")
+
     for center, node, color, r in zip(modified_coords, graph_nodes,
                                       node_colors, node_sizes):
         draw.ellipse(
@@ -147,6 +151,8 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, s
              (center[0] + r, center[1] + r)],
             fill=color
         )
+
+    print("Nodes drawn")
     # y_coords = [42.72685, 42.848564, 43.022452, 43.213817, 43.354144, 43.533341, 43.607655, 43.750837, 43.873348, 44.008176, 44.107845, 44.185469, 44.304375, 44.382911, 44.461759, 44.492504, 44.57663, 44.670759, 44.781578, 44.858507]
     # y_coords = [shapely.geometry.Point((-73, coord)) for coord in y_coords]
     # new_y_coords = modify_coords(y_coords, [2000,2000])

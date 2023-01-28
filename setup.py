@@ -15,7 +15,7 @@ setup(
     install_requires=[
         "matplotlib==3.5.1", 
         "pandas==1.4.1",
-        "shapely>=1.0",
-        "gerrychain==0.2.20"
+        "gerrychain==0.2.20",
+        "maup==1.0.8"
     ]
 )

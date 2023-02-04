@@ -32,6 +32,10 @@ if __name__ == "__main__":
     communitygen_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata.json"))
     communitygen_parser.add_argument("--num_thresholds", type=int, default=50)
     communitygen_parser.set_defaults(func=rba.community_generation.create_communities)
-
+    
+    quantify = subparsers.add_parser("quantify")
+    quantify.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata.json"))
+    quantify.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
+    quantify.set_defaults(func=rba.district_quantification.quantify_districts())
     args = parser.parse_args()
     args.func(**{key: val for key, val in vars(args).items() if key != "func"})

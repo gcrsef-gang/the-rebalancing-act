@@ -20,9 +20,9 @@ import maup
 import networkx as nx
 
 # The link to the data directory in James' computer
-data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/hte-data-new/raw"
-# final_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/hte-data-new/graphs"
-final_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/data"
+data_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))+ "/hte-data-new/raw"
+final_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))+ "/hte-data-new/graphs"
+# final_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+ "/data"
 
 def compress_all_data(type):
     """
@@ -68,27 +68,35 @@ def merge_graphs():
     """
     for year in ["2010", "2020"]:
         for file in os.listdir(final_dir+"/"+year):
-            if "merged" in file:
+            if "merged" in file or "simplified" in file:
                 continue
+            elif os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + "_merged.json")):
+                continue
+            print(file)
             corresponding_file = file[:file.find(".")] + ".json"
             full_json_path = os.path.join(final_dir+"/"+year, corresponding_file)
             if not os.path.isfile(full_json_path):
-                subprocess.call(["7z", "e", full_json_path, file])
+                # print(["7z", "e", os.path.join(final_dir+"/"+year, file), "-o"+final_dir+"/"+year,])
+                subprocess.call(["7z", "e", os.path.join(final_dir+"/"+year, file), "-o"+final_dir+"/"+year,])
             with open(full_json_path, "r") as f:
                 data = json.load(f)
             graph = nx.readwrite.adjacency_graph(data)
+            print(f"Total number of nodes: {len(graph.nodes)}")
             merged_graph = merge_empty(graph)
             merged_data = nx.readwrite.adjacency_data(merged_graph)
             # for id, data in merged_graph.nodes(data=True):
                 # print(data)
                 # merged_data["geometry"] = shapely.geometry.mapping(data['geometry'])
-            merged_corresponding_file = file[:file.find(".")] + "_merged.json"
-            print(merged_data["nodes"][0])
+            merged_corresponding_file = file[:file.find(".")] + "_merged.json"  
             with open(os.path.join(final_dir+"/"+year, merged_corresponding_file), "w") as f:
-                # json.dump(merged_data)
-                json.dump(merged_data["nodes"][1], f)
+                # for i in range(len(merged_data["nodes"])):
+                    # print(merged_data["nodes"][i])
+                    # json.dump(merged_data["nodes"][i], f)
+                json.dump(merged_data, f)
                 # data_str = json.dumps(merged_data["nodes"][0])
                 # f.write(data_str)
+            if os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")):
+                os.remove(full_json_path)
 
 def split_multipolygons(geodata, assignment=None, block_data=None):
     """
@@ -146,7 +154,7 @@ def split_multipolygons(geodata, assignment=None, block_data=None):
                             elif column == "geoid":
                                 pass
                             elif column in block_data.columns:
-                                if type(block[column]) in [int, float]:
+                                if type(block_data[column].iloc[0]) in [int, float]:
                                     new_row[column] = 0
                                 else:
                                     new_row[column] = None
@@ -325,7 +333,8 @@ def convert_to_graph(geodata):
     start_time = time.time()
     min_yes = bounds["miny"]
     # Can be changed!
-    dividers = round(math.sqrt(len(geodata)))
+    dividers = round(math.pow(len(geodata),1/3))
+    print(f"Number of dividers: {dividers}")
     min_yes_list = []
     for geoid, min_y in min_yes.items():
         min_yes_list.append([min_y, geoid])
@@ -367,7 +376,7 @@ def convert_to_graph(geodata):
         active_geoids = []
         for j, [current_min_x, current_geoid] in enumerate(min_xes_list):
             # start_time = time.time() 
-            print(f"\rBlock:  {j}/{len(min_xes_list)}, Grouping: {i}/{dividers}", end="")
+            print(f"\rBlock:  {j}/{len(min_xes_list)}, Grouping: {i+1}/{dividers}", end="")
             # current_min_x = min_xes_list[i]
             # current_geoid = min_xes_dict[current_min_x]
             _, current_min_y, current_max_x, current_max_y = bounds.loc[current_geoid]
@@ -449,7 +458,7 @@ def connect_islands(graph):
     components_to_nodes = {}
     # Iterate through all combinations and find the smallest distances
     for i, combo in enumerate(combinations([num for num in range(0, graph_components_num)], 2)):
-        print(f"\rDistance combination: {i}/{int(graph_components_num*(graph_components_num-1)/2)}", end="")
+        print(f"\rDistance combination: {i+1}/{int(graph_components_num*(graph_components_num-1)/2)}", end="")
         # Combo is an int index for its position in the graph components list
         component = graph_components_list[combo[0]]
         other_component = graph_components_list[combo[1]]
@@ -531,8 +540,10 @@ def merge_empty(graph):
     empty_nodes = []
     for node in graph.nodes(data=True):
         node_data = node[1]
-        if node_data["total_pop"] == 0:
+        # CUTOFF TO MERGE: 20 PEOPLE
+        if node_data["total_pop"] < 20:
             empty_nodes.append(node[0])
+    print(f"Nodes below population cutoff to merge: {len(empty_nodes)}")
     empty_graph = graph.subgraph(empty_nodes)
     empty_groups = list(nx.algorithms.connected_components(empty_graph))
     for group in empty_groups:
@@ -542,9 +553,11 @@ def merge_empty(graph):
                 bordering.add(other_node)
         bordering = bordering.difference(set(group))
         substituted_node = list(bordering)[0]
-        # geometry_union = shapely.ops.unary_union([shapely.geometry.Polygon(graph.nodes[node]["geometry"]["coordinates"]) for node in group])
-        geometry_union = shapely.ops.unary_union([shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group])
-        graph.nodes[substituted_node]["geometry"] = geometry_union
+        geometry = [shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group]
+        geometry.append(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]))
+        geometry_union = shapely.ops.unary_union(geometry)
+        graph.nodes[substituted_node]["geometry"] = shapely.geometry.mapping(geometry_union)
+        graph.add_edges_from([(substituted_node, border_node) for border_node in bordering])
         graph.remove_nodes_from(group)
     return graph
 
@@ -603,7 +616,6 @@ def extract_state(year, state):
         geodata = gpd.read_file(path+prefix+"geodata.json", dtype={geoid_name:"string"})
     print(f"Initial number of precincts/block groups: {len(geodata)}")
     print("Geodata loaded")
-    print(geodata, geodata.columns)
 
     try:
         block_demographics = pd.read_csv(path+"block_demographics.csv", skiprows=1)
@@ -815,7 +827,7 @@ def serialize(year, state, checkpoint="beginning"):
         block_geodata.drop_duplicates(inplace=True)
 
         # Drop water precincts
-        print(geodata.index.str.contains("ZZZZZZ"))
+        # print(geodata.index.str.contains("ZZZZZZ"))
         geodata = geodata[~geodata.index.str.contains("ZZZZZZ")]
         # Now that both levels are unified as much as possible, we need to relate them to each other to join them.
         assignment = maup.assign(block_geodata, geodata)
@@ -897,7 +909,8 @@ def serialize(year, state, checkpoint="beginning"):
     else:
         geodata_graph = nx.read_gpickle("test_geodata_graph.gpickle")    
         block_geodata_graph = nx.read_gpickle("test_block_geodata_graph.gpickle")    
-
+        print(len(geodata_graph))
+        print(len(block_geodata_graph))
     # Drop water-only precincts and blocks NOTE: not necessary 
     # if year == 2010:
     #     geodata.drop(geodata[geodata["ALAND10"] == 0].index, inplace=True)
@@ -934,19 +947,31 @@ def serialize(year, state, checkpoint="beginning"):
     with open(final_dir + f"/{year}/{state}_block_geodata.json", "w") as f:
         json.dump(block_data, f)
 
-    # Drop the geometry to create a simplified version
-    for id, data in connected_geodata_graph.nodes(data=True):
-        del data["geometry"]
-    for id, data in connected_block_geodata_graph.nodes(data=True):
-        del data["geometry"]
-    data = nx.readwrite.json_graph.adjacency_data(connected_geodata_graph)
-    block_data = nx.readwrite.json_graph.adjacency_data(connected_block_geodata_graph)
+    # Create a version with merged precincts/blocks under a certain threshold
+    merged_geodata_graph = merge_empty(connected_geodata_graph)
+    merged_block_geodata_graph = merge_empty(connected_block_geodata_graph)
+    data = nx.readwrite.json_graph.adjacency_data(merged_geodata_graph)
+    block_data = nx.readwrite.json_graph.adjacency_data(merged_block_geodata_graph)
 
-    with open(final_dir + f"/{year}/{state}_simplified_geodata.json", "w") as f:
+    with open(final_dir + f"/{year}/{state}_geodata_merged.json", "w") as f:
         json.dump(data, f)
-    with open(final_dir + f"/{year}/{state}_simplified_block_geodata.json", "w") as f:
+    with open(final_dir + f"/{year}/{state}_block_geodata_merged.json", "w") as f:
         json.dump(block_data, f)
+
+    # Drop the geometry to create a simplified version (Currently not being used)
+    # for id, data in connected_geodata_graph.nodes(data=True):
+    #     del data["geometry"]
+    # for id, data in connected_block_geodata_graph.nodes(data=True):
+    #     del data["geometry"]
+    # data = nx.readwrite.json_graph.adjacency_data(connected_geodata_graph)
+    # block_data = nx.readwrite.json_graph.adjacency_data(connected_block_geodata_graph)
+
+    # with open(final_dir + f"/{year}/{state}_simplified_geodata.json", "w") as f:
+    #     json.dump(data, f)
+    # with open(final_dir + f"/{year}/{state}_simplified_block_geodata.json", "w") as f:
+    #     json.dump(block_data, f)
     print("Islands connected")
+
 
 def serialize_all():
     """
@@ -961,7 +986,7 @@ def serialize_all():
             if state:
                 exists = False
                 for file in existing_files:
-                    if file in [state+"_geodata.json", state+"_geodata.7z"]:
+                    if file in [state+"_geodata.json", state+"_geodata.7z", state+"_geodata_merged.json"]:
                         exists = True
                         break
                 if not exists:
@@ -969,19 +994,7 @@ def serialize_all():
 
 if __name__ == "__main__":
     # compress_all_data("final")
-    merge_graphs()
-    # serialize_all()
-    # serialize(2010, "hawaii", checkpoint="beginning")
-    # serialize(2010, "minnesota", checkpoint="integration")
-    # serialize(2010, "alabama", checkpoint="geometry")
-    # serialize(2010, "florida", checkpoint="beginning")
-    # serialize(2010, "florida", checkpoint="integration")
-    # serialize(2020, "maine", checkpoint="beginning")
-    # serialize(2020, "maine", checkpoint="geometry")
-    # serialize(2010, "vermont", checkpoint="beginning")
-    # serialize(2010, "vermont", checkpoint="integration")
-    # serialize(2010, "vermont", checkpoint="geometry")
-    # serialize(2020, "vermont", checkpoint="beginning")
-    # serialize(2020, "vermont", checkpoint="integration")
-    # serialize(2020, "vermont", checkpoint="geometry")
-    # serialize(2010, "missouri", checkpoint="graph")
+    # merge_graphs()
+    serialize_all()
+    # serialize(2010, "north_dakota", checkpoint="geometry")
+    # serialize(2010, "missouri", checkpoint="graph")       

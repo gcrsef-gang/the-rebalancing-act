@@ -33,7 +33,7 @@ class Community:
 
 def compute_precinct_similarities(graph, verbose=False):
     """
-    Generates similarities between precincts.
+    Generates similarities between precincts. Edits graph in-place.
     """
     min_pop_density = 1e20
     max_pop_density = -1e20
@@ -79,18 +79,14 @@ def compute_precinct_similarities(graph, verbose=False):
     if verbose:
         print()
 
-    return graph
-        
 
-
-def create_communities(graph_file, num_thresholds, verbose=False):
+def create_communities(graph_file, num_thresholds, output_file, verbose=False):
     """
-    Generates supercommunities from precincts
+    Generates supercommunity map from geodata. Outputs a list of edges and their lifetimes.
     """
     if verbose:
         print("Loading geodata... ", end="")
 
-    # geodata = Graph.from_json(graph_file)
     with open(graph_file, "r") as f:
         data = json.load(f)
     geodata = nx.readwrite.json_graph.adjacency_graph(data)
@@ -99,18 +95,57 @@ def create_communities(graph_file, num_thresholds, verbose=False):
         print("done!")
         print("Calculating precinct similarities...")
 
-    graph = compute_precinct_similarities(geodata, verbose)
+    compute_precinct_similarities(geodata, verbose)
 
     if verbose:
         print("done!")
 
-    # communities = set()
-    # for t in num_thresholds:
-    #     threshold = t / num_thresholds
+    edge_lifetimes = {tuple(edge): None for edge in geodata.edges}
+    communities = geodata.copy()  # Community dual graph
+    for c1, c2 in communities.edges:
+        communities.edges[c1, c2]["consituent_edges"] = {(c1, c2, geodata.edges[c1, c2]["similarity"])}
 
-    #     for node1, node2 in geodata.edges:
-    #         if geodata.edges[node1, node2]["similarity"] < threshold:
-    #             geodata.remove_edge(node1, node2)
-        
-    #     for component in nx.connected_components(geodata):
-    #         communities.add(frozenset(component))
+    # After each iteration, the current community map contains only borders constituted entirely of
+    # edges with lower similarity than the threshold. This means it is possible for a single
+    # community to be involved in multiple contractions during a single iteration.
+    for t in range(num_thresholds + 1):
+        threshold = 1 - (t / num_thresholds)
+
+        # Implemented with nested loops because we don't want to iterate over communities.edges
+        # while contractions are occurring. The next iteration of this loop is reached whenever a
+        # contraction occurs.
+        explored_edges = set()
+        while len(explored_edges) < len(communities.number_of_edges()):
+            for c1, c2 in communities.edges:
+                if (c1, c2) not in explored_edges:
+                    explored_edges.add((c1, c2))
+
+                    contract = False
+                    for _, _, similarity in communities.edges[c1, c2]["consituent_edges"]:
+                        if similarity > threshold:
+                            contract = True
+                            break
+                    
+                    if contract:
+                        for edge in communities.edges[c1, c2]["constituent_edges"]:
+                            edge_lifetimes[edge[:2]] = threshold
+
+                        # Delete c2, add its edges to c1, and update constituent_edges sets.
+                        for neighbor in communities[c2]:
+                            if neighbor == c1:
+                                continue
+                            if neighbor in communities[c1]:
+                                c_edges = (communities.edges[c1, neighbor]["constituent_edges"]
+                                         + communities.edges[c2, neighbor]["constituent_edges"])
+                            else:
+                                c_edges = communities.edges[c2, neighbor]["constituent_edges"]
+                            communities.add_edge(c1, neighbor, constituent_edges=c_edges)
+                        communities.remove_node(c2)
+                        break  # communities.edges has changed. Continue to next iteration.
+
+    for edge, lifetime in edge_lifetimes.items():
+        if lifetime == None:
+            raise ValueError(f"Something must have gone wrong. Edge {edge} never got removed.")
+
+    with open(output_file, 'w+') as f:
+        json.dump(edge_lifetimes, f)

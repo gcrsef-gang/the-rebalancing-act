@@ -49,7 +49,6 @@ def compute_precinct_similarities(graph, verbose=False):
 
     for i, nodes in enumerate(graph.edges):
         node1, node2 = nodes
-
         if verbose:
             # TODO: write stats
             print(f"Computing similarity #: {i+1}/{len(graph.edges)}\tCurrent edge: ({node1}, {node2})\r", end="")
@@ -70,6 +69,7 @@ def compute_precinct_similarities(graph, verbose=False):
         pop1 = (population_densities[node1]-min_pop_density)/(max_pop_density-min_pop_density)
         pop2 = (population_densities[node2]-min_pop_density)/(max_pop_density-min_pop_density)
         pop_density_distance = abs(pop1 - pop2)
+
         similarity = 1 - np.average(
             [race_distance, votes_distance, pop_density_distance],
             weights=[SIMILARITY_WEIGHTS["race"], SIMILARITY_WEIGHTS["votes"], SIMILARITY_WEIGHTS["pop_density"]])
@@ -90,12 +90,14 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
     with open(graph_file, "r") as f:
         data = json.load(f)
     geodata = nx.readwrite.json_graph.adjacency_graph(data)
-
     if verbose:
         print("done!")
         print("Calculating precinct similarities...")
 
     compute_precinct_similarities(geodata, verbose)
+    new_data = nx.readwrite.json_graph.adjacency_data(geodata)
+    with open(graph_file, "w") as f:
+        json.dump(new_data, f)
 
     if verbose:
         print("done!")
@@ -103,49 +105,48 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
     edge_lifetimes = {tuple(edge): None for edge in geodata.edges}
     communities = geodata.copy()  # Community dual graph
     for c1, c2 in communities.edges:
-        communities.edges[c1, c2]["consituent_edges"] = {(c1, c2, geodata.edges[c1, c2]["similarity"])}
+        communities.edges[c1, c2]["constituent_edges"] = {(c1, c2, geodata.edges[c1, c2]["similarity"])}
 
     # After each iteration, the current community map contains only borders constituted entirely of
     # edges with lower similarity than the threshold. This means it is possible for a single
     # community to be involved in multiple contractions during a single iteration.
     for t in range(num_thresholds + 1):
         threshold = 1 - (t / num_thresholds)
-
+        print(threshold)
+        print(len(communities.edges))
         # Implemented with nested loops because we don't want to iterate over communities.edges
         # while contractions are occurring. The next iteration of this loop is reached whenever a
         # contraction occurs.
         explored_edges = set()
-        while len(explored_edges) < len(communities.number_of_edges()):
+        while len(explored_edges) < communities.number_of_edges():
             for c1, c2 in communities.edges:
                 if (c1, c2) not in explored_edges:
                     explored_edges.add((c1, c2))
-
                     contract = False
-                    for _, _, similarity in communities.edges[c1, c2]["consituent_edges"]:
+                    for _, _, similarity in communities.edges[c1, c2]["constituent_edges"]:
                         if similarity > threshold:
                             contract = True
                             break
-                    
                     if contract:
                         for edge in communities.edges[c1, c2]["constituent_edges"]:
-                            edge_lifetimes[edge[:2]] = threshold
+                            edge_lifetimes[tuple(edge[:2])] = 1-threshold
 
                         # Delete c2, add its edges to c1, and update constituent_edges sets.
                         for neighbor in communities[c2]:
                             if neighbor == c1:
                                 continue
                             if neighbor in communities[c1]:
-                                c_edges = (communities.edges[c1, neighbor]["constituent_edges"]
-                                         + communities.edges[c2, neighbor]["constituent_edges"])
+                                c_edges = communities.edges[c1, neighbor]["constituent_edges"].union(communities.edges[c2, neighbor]["constituent_edges"])
                             else:
                                 c_edges = communities.edges[c2, neighbor]["constituent_edges"]
                             communities.add_edge(c1, neighbor, constituent_edges=c_edges)
                         communities.remove_node(c2)
                         break  # communities.edges has changed. Continue to next iteration.
-
+    # print(edge_lifetimes)
     for edge, lifetime in edge_lifetimes.items():
         if lifetime == None:
+            print(geodata.edges[edge]["similarity"])
             raise ValueError(f"Something must have gone wrong. Edge {edge} never got removed.")
-
     with open(output_file, 'w+') as f:
-        json.dump(edge_lifetimes, f)
+        f.write(str(edge_lifetimes))
+        # json.dump(edge_lifetimes, f)

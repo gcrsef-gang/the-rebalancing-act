@@ -19,6 +19,9 @@ from pyproj import CRS
 import maup
 import networkx as nx
 
+import warnings
+warnings.filterwarnings("ignore")
+
 # The link to the data directory in James' computer
 data_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))+ "/hte-data-new/raw"
 final_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))+ "/hte-data-new/graphs"
@@ -72,7 +75,7 @@ def merge_graphs():
                 continue
             elif os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + "_merged.json")):
                 continue
-            print(file)
+            print(year, file)
             corresponding_file = file[:file.find(".")] + ".json"
             full_json_path = os.path.join(final_dir+"/"+year, corresponding_file)
             if not os.path.isfile(full_json_path):
@@ -209,8 +212,6 @@ def combine_holypolygons(geodata, assignment=None):
     hole_geoids = []
     # Generate minimum x coordinates
     # for geoid, value in min_xes.iteritems():
-    #     if value == -72.125922:
-    #         print("caught!", geoid)
     #     min_xes_dict[value] = geoid
     source_geometry = []
     # target_geometry = {}
@@ -277,8 +278,6 @@ def combine_holypolygons(geodata, assignment=None):
     # source_geometry = gpd.GeoSeries(source_geometry, crs=geodata.crs)
     source_geometry = geodata
     hole_assignment = maup.assign(source_geometry, target_geometry)
-    # print(hole_assignment.loc["0514509p1"], "0514509 check!")
-    # print(hole_assignment.loc["0514509p2"], "0514509 check!")
     # for hole_geoid, geoid in hole_assignment.groupby[geoid].iteritems():
     for id, row in target_geometry.iterrows():
         geoid = row["geoid"]
@@ -292,7 +291,10 @@ def combine_holypolygons(geodata, assignment=None):
             hole_geoids.append(hole_geoid)
             hole_row = geodata.loc[hole_geoid]
             confirmed_area += hole_row["geometry"].area
-            geodata.loc[geoid, "total_pop"] += hole_row["total_pop"]
+            try:
+                geodata.loc[geoid, "total_pop"] += hole_row["total_pop"]
+            except TypeError:
+                raise Exception(hole_row, geoid, hole_geoid, geodata.loc[geoid])
             geodata.loc[geoid, "total_white"] += hole_row["total_white"]
             geodata.loc[geoid, "total_hispanic"] += hole_row["total_hispanic"]
             geodata.loc[geoid, "total_black"] += hole_row["total_black"]
@@ -535,14 +537,20 @@ def connect_islands(graph):
 
 def merge_empty(graph):
     """
-    This function takes a graph and merges precincts/blocks with zero people with other precincts/blocks
+    This function takes a graph and merges precincts/blocks with a cutoff less than 20 people with other precincts/blocks
     """
+    fake_nodes = []
     empty_nodes = []
     for node in graph.nodes(data=True):
         node_data = node[1]
+        if node[0] == "2401507-001s3":
+            print("DETECTED", node_data["total_pop"])
         # CUTOFF TO MERGE: 20 PEOPLE
         if node_data["total_pop"] < 20:
             empty_nodes.append(node[0])
+        elif str(node_data["total_pop"]) == "nan":
+            empty_nodes.append(node[0])
+            fake_nodes.append(node[0])
     print(f"Nodes below population cutoff to merge: {len(empty_nodes)}")
     empty_graph = graph.subgraph(empty_nodes)
     empty_groups = list(nx.algorithms.connected_components(empty_graph))
@@ -556,13 +564,29 @@ def merge_empty(graph):
         geometry = [shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group]
         geometry.append(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]))
         geometry_union = shapely.ops.unary_union(geometry)
+        for node in group:
+            if node in fake_nodes:
+                continue
+            graph.nodes[substituted_node]["total_pop"] += graph.nodes[node]["total_pop"]
+            graph.nodes[substituted_node]["total_white"] += graph.nodes[node]["total_white"]
+            graph.nodes[substituted_node]["total_hispanic"] += graph.nodes[node]["total_hispanic"]
+            graph.nodes[substituted_node]["total_black"] += graph.nodes[node]["total_black"]
+            graph.nodes[substituted_node]["total_asian"] += graph.nodes[node]["total_asian"]
+            graph.nodes[substituted_node]["total_native"] += graph.nodes[node]["total_native"]
+            graph.nodes[substituted_node]["total_islander"] += graph.nodes[node]["total_islander"]
+            graph.nodes[substituted_node]["total_vap"] += graph.nodes[node]["total_vap"]
+            graph.nodes[substituted_node]["total_votes"] += graph.nodes[node]["total_votes"]
+            graph.nodes[substituted_node]["total_dem"] += graph.nodes[node]["total_dem"]
+            graph.nodes[substituted_node]["total_rep"] += graph.nodes[node]["total_rep"]
         graph.nodes[substituted_node]["geometry"] = shapely.geometry.mapping(geometry_union)
-        graph.add_edges_from([(substituted_node, border_node) for border_node in bordering])
+        graph.add_edges_from([(substituted_node, border_node) for border_node in bordering if border_node != substituted_node])
         graph.remove_nodes_from(group)
+    # Split multipolygons which are smaller than a block
+    print(f"{len(fake_nodes)} Fake split multipolygons removed!")
     return graph
 
 def extract_state(year, state):
-    """
+    """ 
     This function takes a year and state and returns all the uncompressed data files in that state's folder. 
     Arguments: 
         year - Either 2010 or 2020. (string)
@@ -632,10 +656,10 @@ def extract_state(year, state):
     print("Block VAP data loaded")
 
     try:
-        block_geodata = gpd.read_file(path+"block_geodata.json")
+        block_geodata = gpd.read_file(path+"block_geodata.json", dtype={geoid_name:"string"})
     except:
         subprocess.call(["7z", "e", path+"block_geodata.7z", "-o"+path])
-        block_geodata = gpd.read_file(path+"block_geodata.json")
+        block_geodata = gpd.read_file(path+"block_geodata.json", dtype={geoid_name:"string"})
     print(f"Initial number of blocks: {len(block_geodata)}")
     print("Block geodata data loaded")
 
@@ -781,6 +805,7 @@ def serialize(year, state, checkpoint="beginning"):
         block_geodata = block_geodata.join(block_demographics)
         print("Block demographics/geodata joined")
 
+        geodata.to_file("testing_geodata.json", driver="GeoJSON")
         # CHECK: VAP amount is less than TOT amount for all precincts/blocks
         if state == "maine" and year == 2020:
             pass
@@ -788,6 +813,8 @@ def serialize(year, state, checkpoint="beginning"):
             if len(geodata) != len(geodata[geodata["total_pop"] >= geodata["total_vap"]]):
                 print(geodata[["total_pop", "total_vap"]])
                 print(geodata[geodata["total_pop"] < geodata["total_vap"]])
+                within = geodata[geodata["total_pop"] >= geodata["total_vap"]]
+                print(geodata[~geodata.index.isin(within.index)])
                 print(len(geodata), len(geodata[geodata["total_pop"] >= geodata["total_vap"]]))
                 raise Exception("DATA ISSUE: Higher VAP than TOTAL for precincts")
             if len(block_geodata) != len(block_geodata[block_geodata["total_pop"] >= block_geodata["total_vap"]]):
@@ -829,12 +856,18 @@ def serialize(year, state, checkpoint="beginning"):
         # Drop water precincts
         # print(geodata.index.str.contains("ZZZZZZ"))
         geodata = geodata[~geodata.index.str.contains("ZZZZZZ")]
+        geodata.index = geodata.index.astype(str)
+        block_geodata.index = block_geodata.index.astype(str)
         # Now that both levels are unified as much as possible, we need to relate them to each other to join them.
         assignment = maup.assign(block_geodata, geodata)
-        assignment.columns = ["precinct"]
+        assignment.to_csv("testing_assignment_before_change.csv")
+        assignment.rename("precinct", inplace=True)
         assignment = assignment.astype(str)
         # This essentially converts the precincts from floats to GEOID strings
         assignment = assignment.str.split('.').str[0]
+        if assignment.index[0][0] == "0":
+            assignment = assignment.str.zfill(1)
+        print("Assignment created!")
         # Aggregate demographic data to precinct level
         if year == 2020 and state == "maine":
             variables = ["total_pop", "total_white", "total_hispanic", "total_black", "total_native", "total_asian", "total_islander", "total_vap"]
@@ -843,8 +876,17 @@ def serialize(year, state, checkpoint="beginning"):
             geodata["total_votes"] = geodata["total_dem"] + geodata["total_rep"] + geodata["G20PRELJOR"] + geodata["G20PREGHAW"] + geodata["G20PREAFUE"]
         # Prorate election data from precinct to block level    
         weights = block_geodata.total_vap / assignment.map(geodata.total_vap)
+        print(assignment.index, assignment.dtype)
+        print(geodata.index, geodata.dtypes)
+        print(block_geodata.total_vap)
+        print(geodata.total_vap)
+        print(geodata.index.dtype)
+        print(assignment)
+        print(assignment.map(geodata.total_vap))
+        print(weights, "weights")
         prorated = maup.prorate(assignment, geodata[["total_votes", "total_dem", "total_rep"]], weights)
         block_geodata[["total_votes", "total_dem", "total_rep"]] = prorated.round(3)
+        print(block_geodata[block_geodata["total_votes"] > 0], "places where it is greater than zero votes")
         block_geodata[["total_votes", "total_dem", "total_rep"]] = block_geodata[["total_votes","total_dem", "total_rep"]].fillna(0)
         
         geodata.to_file("testing_geodata.json", driver="GeoJSON")
@@ -854,6 +896,7 @@ def serialize(year, state, checkpoint="beginning"):
         # geodata.set_index("geoid", inplace=True)
         # block_geodata.set_index("geoid", inplace=True)
         assignment.to_csv("testing_assignment.csv")
+        print("Integration completed!")
     # For incredibly mysterious reasons this may be necessary to prevent problems
     elif checkpoint == "beginning" or checkpoint == "integration":
         geodata = gpd.read_file("testing_geodata.json", driver="GeoJSON")
@@ -983,6 +1026,8 @@ def serialize_all():
             year_pos = root.find(year)
             state = root[year_pos+5:]
             print(year, state)
+            # if state == "florida":
+                # continue
             if state:
                 exists = False
                 for file in existing_files:
@@ -996,5 +1041,6 @@ if __name__ == "__main__":
     # compress_all_data("final")
     # merge_graphs()
     serialize_all()
+    # serialize(2010, "massachusetts", checkpoint="beginning")
     # serialize(2010, "north_dakota", checkpoint="geometry")
-    # serialize(2010, "missouri", checkpoint="graph")       
+    # serialize(2010, "kansas", checkpoint="graph")       

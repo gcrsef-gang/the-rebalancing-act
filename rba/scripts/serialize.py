@@ -98,8 +98,8 @@ def merge_graphs():
                 json.dump(merged_data, f)
                 # data_str = json.dumps(merged_data["nodes"][0])
                 # f.write(data_str)
-            if os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")):
-                os.remove(full_json_path)
+            # if os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")):
+                # os.remove(full_json_path)
 
 def split_multipolygons(geodata, assignment=None, block_data=None):
     """
@@ -543,8 +543,6 @@ def merge_empty(graph):
     empty_nodes = []
     for node in graph.nodes(data=True):
         node_data = node[1]
-        if node[0] == "2401507-001s3":
-            print("DETECTED", node_data["total_pop"])
         # CUTOFF TO MERGE: 20 PEOPLE
         if node_data["total_pop"] < 20:
             empty_nodes.append(node[0])
@@ -565,6 +563,16 @@ def merge_empty(graph):
         geometry.append(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]))
         geometry_union = shapely.ops.unary_union(geometry)
         for node in group:
+            # if isinstance(geometry_union, shapely.geometry.MultiPolygon):
+            if substituted_node == "2403914-001" and node == "2403910-002s4":
+                # if isinstance(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]), shapely.geometry.MultiPolygon):
+                # if substituted_node == "2402502-014" and group[0] == "2402502-005s2":
+                    # print(shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"])))
+                    # print([graph.nodes[node]["geometry"] for node in group])
+                print(graph.nodes[substituted_node]["geometry"])
+                print(geometry)
+                print(group, substituted_node)
+                print(list(graph.neighbors("2403910-002s4")))
             if node in fake_nodes:
                 continue
             graph.nodes[substituted_node]["total_pop"] += graph.nodes[node]["total_pop"]
@@ -876,17 +884,8 @@ def serialize(year, state, checkpoint="beginning"):
             geodata["total_votes"] = geodata["total_dem"] + geodata["total_rep"] + geodata["G20PRELJOR"] + geodata["G20PREGHAW"] + geodata["G20PREAFUE"]
         # Prorate election data from precinct to block level    
         weights = block_geodata.total_vap / assignment.map(geodata.total_vap)
-        print(assignment.index, assignment.dtype)
-        print(geodata.index, geodata.dtypes)
-        print(block_geodata.total_vap)
-        print(geodata.total_vap)
-        print(geodata.index.dtype)
-        print(assignment)
-        print(assignment.map(geodata.total_vap))
-        print(weights, "weights")
         prorated = maup.prorate(assignment, geodata[["total_votes", "total_dem", "total_rep"]], weights)
         block_geodata[["total_votes", "total_dem", "total_rep"]] = prorated.round(3)
-        print(block_geodata[block_geodata["total_votes"] > 0], "places where it is greater than zero votes")
         block_geodata[["total_votes", "total_dem", "total_rep"]] = block_geodata[["total_votes","total_dem", "total_rep"]].fillna(0)
         
         geodata.to_file("testing_geodata.json", driver="GeoJSON")
@@ -952,8 +951,9 @@ def serialize(year, state, checkpoint="beginning"):
     else:
         geodata_graph = nx.read_gpickle("test_geodata_graph.gpickle")    
         block_geodata_graph = nx.read_gpickle("test_block_geodata_graph.gpickle")    
-        print(len(geodata_graph))
-        print(len(block_geodata_graph))
+        print(f"Number of nodes in graph: {len(geodata_graph)}")
+        print(f"Number of nodes in block graph: {len(block_geodata_graph)}")
+
     # Drop water-only precincts and blocks NOTE: not necessary 
     # if year == 2010:
     #     geodata.drop(geodata[geodata["ALAND10"] == 0].index, inplace=True)
@@ -987,7 +987,7 @@ def serialize(year, state, checkpoint="beginning"):
 
     with open(final_dir + f"/{year}/{state}_geodata.json", "w") as f:
         json.dump(data, f)
-    with open(final_dir + f"/{year}/{state}_block_geodata.json", "w") as f:
+    with open(final_dir + f"/{year}/{state}_block_geodata_help.json", "w") as f:
         json.dump(block_data, f)
 
     # Create a version with merged precincts/blocks under a certain threshold
@@ -1036,11 +1036,12 @@ def serialize_all():
                         break
                 if not exists:
                     serialize(int(year), state, checkpoint="beginning")
+    print("All done!")
 
 if __name__ == "__main__":
-    # compress_all_data("final")
+    compress_all_data("final")
     # merge_graphs()
-    serialize_all()
-    # serialize(2010, "massachusetts", checkpoint="beginning")
+    # serialize_all()
+    # serialize(2010, "maryland", checkpoint="beginning")
     # serialize(2010, "north_dakota", checkpoint="geometry")
-    # serialize(2010, "kansas", checkpoint="graph")       
+    # serialize(2020, "missouri", checkpoint="graph")       

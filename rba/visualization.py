@@ -18,7 +18,6 @@ import numpy as np
 from . import community_generation
 from . import util
 
-
 IMAGE_DIMS = (2000, 2000)
 IMAGE_BG = "white"
 EDGE_WIDTH_FACTOR = 15
@@ -155,34 +154,57 @@ def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=Non
     node_color_values = []  # same number of elements as node_end_indices
     additional_polygon_end_indices = []  # same deal as node_end_indices
     for u, v in graph.edges:
-        for line_string in edge_coords((u, v)):
-            all_flattened_coords.append(line_string[0])
-            all_flattened_coords.append(line_string[1])
-            edge_width_values.append(edge_widths((u, v)))
-            edge_color_values.append(edge_colors((u, v)))
+        # Just drop connections between islands and the mainland
+        try:
+            for line_string in edge_coords((u, v)):
+                all_flattened_coords.append(line_string[0])
+                all_flattened_coords.append(line_string[1])
+                edge_width_values.append(edge_widths((u, v)))
+                edge_color_values.append(edge_colors((u, v)))
+        except KeyError:
+            continue
     num_edge_line_strings = len(edge_color_values) - 1
     for u in node_list:
         u_coords = node_coords(u)
+            # print(shapely.geometry.mapping(u_coords))
+        # Could be multiline string if the coordinates are a multipolygon
         if isinstance(u_coords.boundary, shapely.geometry.MultiLineString):
             for ls in u_coords.boundary.geoms:
                 all_flattened_coords += ls.coords
+            node_end_indices.append(len(all_flattened_coords) - 1)
+            node_color_values.append(node_colors(u))
         else:
             all_flattened_coords += list(u_coords.boundary.coords)
-        node_end_indices.append(len(all_flattened_coords) - 1)
-        node_color_values.append(node_colors(u))
+            node_end_indices.append(len(all_flattened_coords) - 1)
+            node_color_values.append(node_colors(u))
+        # if u == "2403707-001s3":
+            # print(u_coords, node_end_indices[-1], "SEEN!")
     for poly in additional_polygons:
-        all_flattened_coords += list(poly.boundary.coords)
-        additional_polygon_end_indices.append(len(all_flattened_coords) - 1)
+        if isinstance(poly, shapely.geometry.MultiPolygon):
+            for polygon in poly.geoms:
+                if isinstance(polygon.boundary, shapely.geometry.MultiLineString):
+                    for ls in polygon.boundary.geoms:
+                        all_flattened_coords += list(ls.coords)
+                        additional_polygon_end_indices.append(len(all_flattened_coords) - 1)
+                else:
+                    all_flattened_coords += list(polygon.boundary.coords)
+                    additional_polygon_end_indices.append(len(all_flattened_coords) - 1)
+        else:
+            all_flattened_coords += list(poly.boundary.coords)
+            additional_polygon_end_indices.append(len(all_flattened_coords) - 1)
     all_flattened_coords = modify_coords(all_flattened_coords, IMAGE_DIMS)
 
     # Fill in colors (in a lower layer than borders)
     for i in range(len(node_list)):
         if i == 0:
-            start_index = num_edge_line_strings
+            # Because each edge line string corresponds to two points in the all flattened coords
+            start_index = num_edge_line_strings*2 + 2
         else:
             start_index = node_end_indices[i - 1] + 1
+        if node_list[i] == "2403707-001s3":
+            print(node_color_values[i], "BEING COLORED IN?")
+            print(all_flattened_coords[start_index : node_end_indices[i] + 1])
         draw.polygon(all_flattened_coords[start_index : node_end_indices[i] + 1], fill=node_color_values[i])
-
     # Draw outlines
     for i in range(num_edge_line_strings):
         draw.line(all_flattened_coords[(i * 2) : (i * 2 + 2)], fill=edge_color_values[i], width=edge_width_values[i])
@@ -249,11 +271,22 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
     sys.stdout.flush()
     node_coords = {}
     for u in graph.nodes:
-        coords = graph.nodes[u]["geometry"]["coordinates"][0]
-        for i, point in enumerate(coords):
-            coords[i][0] = round(point[0], 4)
-            coords[i][1] = round(point[1], 4)
-        node_coords[u] = shapely.geometry.Polygon(coords)
+        coords = graph.nodes[u]["geometry"]["coordinates"]
+        if isinstance(coords[0][0][0], list):
+            polygons = []
+            for i, polygon in enumerate(coords):
+                for j, point in enumerate(polygon[0]):
+                    coords[i][0][j][0] = round(point[0], 4)
+                    coords[i][0][j][1] = round(point[1], 4)
+                polygons.append(shapely.geometry.Polygon(coords[i][0]))
+            node_coords[u] = shapely.geometry.MultiPolygon(polygons=polygons)
+        else:
+            for i, point in enumerate(coords[0]):
+                coords[0][i][0] = round(point[0], 4)
+                coords[0][i][1] = round(point[1], 4)
+            node_coords[u] = shapely.geometry.Polygon(coords[0])
+        if u == "2403707-001":
+            print(node_coords[u])
     print("Done!")
 
     print("Getting edge coordinates... ", end="")
@@ -266,11 +299,16 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
                 edge_coords[frozenset((u, v))] = [intersection.coords]
             elif isinstance(intersection, shapely.geometry.MultiLineString):
                 edge_coords[frozenset((u, v))] = [ls.coords for ls in intersection.geoms]
+            elif isinstance(intersection, shapely.geometry.collection.GeometryCollection):
+                edge_coords[frozenset((u,v))] = [ls.coords for ls in intersection.geoms if isinstance(ls, shapely.geometry.LineString)]
             else:
                 raise ValueError(f"Intersection between {u} and {v} is not a LineString or"
                                 + f" MultiLineString. It is of type {type(intersection)}")
-        else:
-            raise ValueError(f"Overlap not found between {u} and {v}")
+        # else:
+            # This is an edge between an island and another precinct, so just connect their centers
+            # print([node_coords[u].centroid.coords, node_coords[v].centroid.coords])
+            # edge_coords[frozenset((u,v))] = [node_coords[u].centroid.coords, node_coords[v].centroid.coords]
+            # raise ValueError(f"Overlap not found between {u} and {v}")
     print("Done!")
 
     try:
@@ -488,4 +526,5 @@ if __name__ == "__main__":
     #         return (255, 0, 0)
 
     # visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.shape(graph.nodes[node]['geometry']).centroid, colors=colors, show=True)
-    visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.shape(graph.nodes[node]['geometry']).centroid, show=True)
+    # visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.shape(graph.nodes[node]['geometry']).centroid, show=True)
+    visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"], show=True)

@@ -110,18 +110,19 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
     # After each iteration, the current community map contains only borders constituted entirely of
     # edges with lower similarity than the threshold. This means it is possible for a single
     # community to be involved in multiple contractions during a single iteration.
+    contractions = []  # Contains lists: [c1, c2, time], where time = 1 - threshold
     for t in range(num_thresholds + 1):
         threshold = 1 - (t / num_thresholds)
-        print(threshold)
-        print(len(communities.edges))
+        # print(threshold)
+        # print(len(communities.edges))
         # Implemented with nested loops because we don't want to iterate over communities.edges
         # while contractions are occurring. The next iteration of this loop is reached whenever a
         # contraction occurs.
         explored_edges = set()
         while len(explored_edges) < communities.number_of_edges():
             for c1, c2 in communities.edges:
-                if (c1, c2) not in explored_edges:
-                    explored_edges.add((c1, c2))
+                if frozenset((c1, c2)) not in explored_edges:
+                    explored_edges.add(frozenset((c1, c2)))
                     contract = False
                     for _, _, similarity in communities.edges[c1, c2]["constituent_edges"]:
                         if similarity > threshold:
@@ -129,7 +130,7 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
                             break
                     if contract:
                         for edge in communities.edges[c1, c2]["constituent_edges"]:
-                            edge_lifetimes[tuple(edge[:2])] = 1-threshold
+                            edge_lifetimes[tuple(edge[:2])] = 1 - threshold
 
                         # Delete c2, add its edges to c1, and update constituent_edges sets.
                         for neighbor in communities[c2]:
@@ -140,13 +141,19 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
                             else:
                                 c_edges = communities.edges[c2, neighbor]["constituent_edges"]
                             communities.add_edge(c1, neighbor, constituent_edges=c_edges)
+                        contractions.append([c1, c2, 1 - threshold])
                         communities.remove_node(c2)
                         break  # communities.edges has changed. Continue to next iteration.
     # print(edge_lifetimes)
     for edge, lifetime in edge_lifetimes.items():
-        if lifetime == None:
+        if lifetime is None:
             print(geodata.edges[edge]["similarity"])
             raise ValueError(f"Something must have gone wrong. Edge {edge} never got removed.")
+
+    output = {
+        "contractions": contractions,
+        "edge_lifetimes": {str(edge): lifetime for edge, lifetime in edge_lifetimes.items()}
+    }
+
     with open(output_file, 'w+') as f:
-        f.write(str(edge_lifetimes))
-        # json.dump(edge_lifetimes, f)
+        json.dump(output, f)

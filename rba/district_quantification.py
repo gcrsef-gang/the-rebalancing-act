@@ -92,8 +92,16 @@ def quantify_districts(graph_file, district_file, community_file, verbose=False)
     Wraps both functions into a single function for direct use from main.py
     """
     state_graph, district_graphs = load_districts(graph_file, district_file)
+
     with open(community_file, "r") as f:
-        community_lifespan = eval(f.read())
+        supercommunity_output = json.load(f)  # Contains strings as keys.
+
+    community_lifespan = {}
+    for edge, lifetime in supercommunity_output["edge_lifetimes"].items():
+        u = edge.split(",")[0][2:-1]
+        v = edge.split(",")[1][2:-2]
+        community_lifespan[(u, v)] = lifetime
+
     district_gerrymanderings, state_gerrymandering = quantify_gerrymandering(state_graph, district_graphs, community_lifespan)
     print(district_gerrymanderings, state_gerrymandering)
     return district_gerrymanderings, state_gerrymandering

@@ -34,10 +34,18 @@ if __name__ == "__main__":
     communitygen_parser.add_argument("--output_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
     communitygen_parser.set_defaults(func=rba.community_generation.create_communities)
     
-    quantify = subparsers.add_parser("quantify")
-    quantify.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
-    quantify.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
-    quantify.add_argument("--community_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
-    quantify.set_defaults(func=rba.district_quantification.quantify_districts)
+    quantify_parser = subparsers.add_parser("quantify")
+    quantify_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
+    quantify_parser.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
+    quantify_parser.add_argument("--community_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
+    quantify_parser.set_defaults(func=rba.district_quantification.quantify_districts)
+
+    draw_parser = subparsers.add_parser("draw")
+    draw_parser.add_argument("--output_file", type=str)
+    draw_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
+    draw_parser.add_argument("--edge_lifetime_file", type=str, default=None)
+    draw_parser.add_argument("--num_frames", type=int, default=50)
+    draw_parser.set_defaults(func=rba.visualization.visualize)
+
     args = parser.parse_args()
     args.func(**{key: val for key, val in vars(args).items() if key != "func"})

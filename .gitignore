@@ -5,3 +5,8 @@ test*
 venv/
 */__pycache__
 *.egg-info
+
+*-communitygen
+out.mp4
+
+district_assignment.csv

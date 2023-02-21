@@ -6,6 +6,7 @@ import random
 import networkx as nx
 
 from . import constants
+from .district_quantification import quantify_gerrymandering
 
 
 def copy_adjacency(graph):
@@ -19,14 +20,14 @@ def copy_adjacency(graph):
     return copy_graph
 
 
-def get_num_vra_districts(partition, minority, threshold):
+def get_num_vra_districts(partition, label, threshold):
     """Returns the number of minority-opportunity distrcts for a given minority and threshold.
 
     Parameters
     ----------
     partition : gerrychain.Parition
         Proposed district plan.
-    minority : str
+    label : str
         Node data key that returns the population of that minority.
     threshold : float
         Value between 0 and 1 indicating the percent population required for a district to be
@@ -37,11 +38,26 @@ def get_num_vra_districts(partition, minority, threshold):
         total_pop = 0
         minority_pop = 0
         for node in partition.parts[part]:
-            total_pop += node["total_pop"]
-            minority_pop += node[minority]
+            total_pop += partition.graph.nodes[node]["total_pop"]
+            if label == "total_combined":
+                for minority in constants.MINORITY_NAMES:
+                    minority_pop += partition.graph.nodes[node][f"total_{minority}"]
+            else:
+                minority_pop += partition.graph.nodes[node][label]
         if minority_pop / total_pop >= threshold:
             num_vra_districts += 1
     return num_vra_districts
+
+
+def get_gerrymandering_score(partition, edge_lifetimes):
+    """Returns the gerrymandering score of a partition.
+    """
+    return quantify_gerrymandering(partition.graph, partition.subgraphs, edge_lifetimes)[1]
+
+
+def get_district_gerrymandering_scores(partition, edge_lifetimes):
+    """Returns the gerrymandering scores of the districts in a partition"""
+    return quantify_gerrymandering(partition.graph, partition.subgraphs, edge_lifetimes)[0]
 
 
 def get_county_weighted_random_spanning_tree(graph):

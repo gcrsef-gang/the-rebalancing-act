@@ -10,6 +10,7 @@ import json
 import math
 
 from PIL import Image, ImageDraw, ImageFont
+import geopandas
 import networkx as nx
 import shapely.geometry
 import shapely.ops
@@ -102,6 +103,19 @@ def modify_coords(coords, bounds):
     new_coords = [(float(X[i]), float(Y[i])) for i in range(n_points)]
 
     return new_coords
+
+
+def visualize_partition_geopandas(partition):
+    """Visualizes a gerrychain.Partition object using geopandas.
+    """
+    data = {"assignment": [], "geometry": []}
+    for node in partition.graph:
+        data["assignment"].append(partition.assignment[node])
+        data["geometry"].append(shapely.geometry.shape(partition.graph.nodes[node]['geometry']))
+
+    gdf = geopandas.GeoDataFrame(data)
+    del data
+    gdf.plot(column="assignment")
 
 
 def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=None, edge_colors=None,

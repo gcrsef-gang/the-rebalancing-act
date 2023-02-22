@@ -7,7 +7,10 @@ Commands
     Generates `num_thresholds` community maps based on the precinct graph `graph`, and writes to a
     file storing a list of individual communities, containing data on constituent precincts, birth 
     and death times.
- - districtgen
+ - districtgen [--graph_file] [--edge_lifetimes_file] [--vra_config] [--output_dir]
+    Runs simulated annealing algorithm, saves the ten best maps, as well as a dataframe keeping
+    track of various statistics for each state of the chain. `vra_config` is a JSON file
+    containing information about minority-opportunity district constraints.
  - ensemblegen
  - quantify
  - draw
@@ -46,6 +49,12 @@ if __name__ == "__main__":
     draw_parser.add_argument("--edge_lifetime_file", type=str, default=None)
     draw_parser.add_argument("--num_frames", type=int, default=50)
     draw_parser.set_defaults(func=rba.visualization.visualize)
+
+    optimize_parser = subparsers.add_parser("optimize")
+    optimize_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
+    optimize_parser.add_argument("--edge_lifetime_file", type=str)
+    optimize_parser.add_argument("--vra_config", type=str)
+    optimize_parser.add_argument("--output_dir", type=str)
 
     args = parser.parse_args()
     args.func(**{key: val for key, val in vars(args).items() if key != "func"})

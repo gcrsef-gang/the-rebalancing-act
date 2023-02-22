@@ -24,13 +24,6 @@ SIMILARITY_WEIGHTS = {
 }
 
 
-@dataclass
-class Community:
-    precincts: frozenset
-    birth_time: float
-    death_time: float = -1
-
-
 def compute_precinct_similarities(graph, verbose=False):
     """
     Generates similarities between precincts. Edits graph in-place.

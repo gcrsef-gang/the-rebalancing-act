@@ -103,7 +103,7 @@ def modify_coords(coords, bounds):
     return new_coords
 
 
-def visualize_partition_geopandas(partition):
+def visualize_partition_geopandas(partition, *args, **kwargs):
     """Visualizes a gerrychain.Partition object using geopandas.
     """
     data = {"assignment": [], "geometry": []}
@@ -113,7 +113,7 @@ def visualize_partition_geopandas(partition):
 
     gdf = geopandas.GeoDataFrame(data)
     del data
-    gdf.plot(column="assignment")
+    gdf.plot(column="assignment", *args, **kwargs)
 
 
 def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=None, edge_colors=None,

@@ -67,6 +67,7 @@ def quantify_gerrymandering(state_graph, district_graphs, community_lifespan, ve
             crossdistrict_edges[state_graph.nodes[edge[1]]["district"]].append((edge[1], edge[0]))
     state_gerrymandering = 0
     district_gerrymanderings = {}
+    num_crossedges = sum([len(edge_list) for edge_list in crossdistrict_edges.values()])
     for district, district_graph in district_graphs.items():
         district_gerrymandering = 0
         # for edge in district_graph.edges():
@@ -82,12 +83,12 @@ def quantify_gerrymandering(state_graph, district_graphs, community_lifespan, ve
                 district_gerrymandering += (community_lifespan[crossedge])/total_crossedge_num
                 # district_gerrymandering -= (community_lifespan[crossedge])/2
                 # state_gerrymandering -= community_lifespan[crossedge]/2
-                state_gerrymandering += community_lifespan[crossedge]/(len(crossdistrict_edges)*2)
+                state_gerrymandering += community_lifespan[crossedge]/(num_crossedges)
             except:
                 district_gerrymandering += (community_lifespan[(crossedge[1], crossedge[0])])/total_crossedge_num
                 # district_gerrymandering -= (community_lifespan[(crossedge[1], crossedge[0])])/2
                 # state_gerrymandering -= community_lifespan[(crossedge[1], crossedge[0])]/2
-                state_gerrymandering += community_lifespan[(crossedge[1], crossedge[0])]/(len(crossdistrict_edges)*2)
+                state_gerrymandering += community_lifespan[(crossedge[1], crossedge[0])]/(num_crossedges)
         district_gerrymanderings[district] = district_gerrymandering
     return district_gerrymanderings, state_gerrymandering
     

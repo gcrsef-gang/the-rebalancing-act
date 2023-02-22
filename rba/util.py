@@ -49,23 +49,12 @@ def get_num_vra_districts(partition, label, threshold):
     return num_vra_districts
 
 
-def get_gerrymandering_score(partition, edge_lifetimes):
-    """Returns the gerrymandering score of a partition.
-    """
-    return quantify_gerrymandering(partition.graph, partition.subgraphs, edge_lifetimes)[1]
-
-
-def get_district_gerrymandering_scores(partition, edge_lifetimes):
-    """Returns the gerrymandering scores of the districts in a partition"""
-    return quantify_gerrymandering(partition.graph, partition.subgraphs, edge_lifetimes)[0]
-
-
 def get_county_weighted_random_spanning_tree(graph):
     """Applies random edge weights to a graph, then multiplies those weights depending on whether or
     not the edge crosses a county border. Then returns the maximum spanning tree for the graph."""
     for u, v in graph.edges:
         weight = random.random()
-        if graph[u]["COUNTYFP10"] == graph[v]["COUNTYFP10"]:
+        if graph.nodes[u]["COUNTYFP10"] == graph.nodes[v]["COUNTYFP10"]:
             weight *= constants.SAME_COUNTY_PENALTY
         graph[u][v]["random_weight"] = weight
 

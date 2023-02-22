@@ -1040,8 +1040,8 @@ def serialize_all():
 
 if __name__ == "__main__":
     # compress_all_data("final")
-    merge_graphs()
+    # merge_graphs()
     # serialize_all()
-    # serialize(2010, "maryland", checkpoint="beginning")
+    serialize(2010, "north_carolina", checkpoint="beginning")
     # serialize(2010, "north_dakota", checkpoint="geometry")
     # serialize(2020, "missouri", checkpoint="graph")       

@@ -3,22 +3,45 @@ Given supercommunity edge lifetimes, uses simulated annealing to generate a map 
 the average border edge lifetime while conforming to redistricting requirements.
 """
 
+from dataclasses import dataclass, field
 from functools import partial
+import heapq
+import json
 import random
 
-from gerrychain import (GeographicPartition, Partition, Graph, MarkovChain,
-                        proposals, updaters, constraints, accept, Election)
+from gerrychain import Partition, Graph, MarkovChain, updaters, constraints, accept
 from gerrychain.proposals import recom
-from gerrychain.tree import bipartition_tree
-from networkx import tree
+from gerrychain.tree import recursive_tree_part, bipartition_tree
+import gerrychain.random
+import pandas as pd
 
+from . import constants
+from .district_quantification import quantify_gerrymandering
 from .util import get_num_vra_districts, get_county_weighted_random_spanning_tree
 
 
 class SimulatedAnnealingChain(MarkovChain):
-    """Augments gerrychain.MarkovChain to take both the current state and proposal in the `accept`
-    function.
+    """Simulated annealing Markov Chain. Major changes to gerrychain.MarkovChain:
+    - `get_temperature` is now the first positional argument, and it must take the current iteration 
+       and return the current temperature.
+    - `accept` must take the current partition, the proposed next partition, and the current 
+       temperature.
+    - Contains static methods for temperature cooling schedules.
     """
+
+    @staticmethod
+    def get_temperature_linear(i, num_steps):
+        return 1 - (i / num_steps)
+
+    COOLING_SCHEDULES = {
+        "linear": get_temperature_linear
+    }
+
+    def __init__(self, get_temperature, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.get_temperature = get_temperature
+        self.temperature = self.get_temperature(self.counter)
+        
     def __next__(self):
         if self.counter == 0:
             self.counter += 1
@@ -31,34 +54,189 @@ class SimulatedAnnealingChain(MarkovChain):
                 self.state.parent = None
 
             if self.is_valid(proposed_next_state):
-                if self.accept(self.state, proposed_next_state):
+                if self.accept(self.state, proposed_next_state, self.get_temperature(self.counter)):
                     self.state = proposed_next_state
                 self.counter += 1
+                self.temperature = self.get_temperature(self.counter)
                 return self.state
         raise StopIteration
 
 
-def accept_proposal(temperature, current_energy, proposed_energy):
-    """Simple simulated-annealing acceptance function.
+@dataclass(order=True)
+class ScoredPartition:
+    """A comparable class for storing partitions and they gerrymandering scores."""
+    score: float
+    partition: Partition=field(compare=False)
+
+
+def sa_accept_proposal(current_state, proposed_next_state, temperature):
+    """Simple simulated-annealing acceptance function. NOTE: this is for maximizing energy.
     """
-    if current_energy > proposed_energy or random.random() < temperature:
+    current_energy = current_state["gerry_scores"][1]
+    proposed_energy = proposed_next_state["gerry_scores"][1]
+    if (current_energy < proposed_energy or random.random() < temperature):
         return True
     return False
 
 
 def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_districts, vra_threshold,
-                                           pop_equality_threshold):
-    """Returns the 10 best maps and a dataframe of statistics for the entire chain.
+                                           pop_equality_threshold, num_steps, num_districts,
+                                           cooling_schedule="linear", verbose=False):
+    """Runs a simulated annealing Markov Chain that maximizes the "RBA goodness score."
+
+    Parameters
+    ----------
+    graph : gerrychain.Graph
+        The state graph of precincts.
+    edge_lifetimes : dict
+        Maps edges (tuples of precinct IDs)
+    num_vra_districts : dict
+        Maps the name of each minority to the minimum number of VRA districts required for it.
+    vra_threshold : float
+        Between 0 and 1. The minimum percentage required to consider a district
+        "minority opportunity."
+    pop_equality_threshold : float
+        Between 0 and 1. The allowed percent deviation allowed between the population of any two
+        districts.
+    num_steps : int
+        The number of iterations to run simulated annealing for.
+    num_districts : int
+        The number of districts to partition the state into.
+    cooling_schedule : str, default="linear"
+        Determines how the temperature decreases during simulated annealing.
+        Options: "linear"
+    verbose : boolean
+        Controls verbosity.
+
+    Returns
+    -------
+    good_partitions : list of 
     """
+
+    sa_updaters = {
+        "population": updaters.Tally("total_pop", alias="population"),
+        "gerry_scores": lambda partition: quantify_gerrymandering(
+            partition.graph,
+            {dist: subgraph for dist, subgraph in partition.subgraphs.items()},
+            edge_lifetimes
+        )
+    }
+
+    vra_updaters = {f"num_{minority}_vra_districts": partial(get_num_vra_districts,
+                                                            label=f"total_{minority}",
+                                                            threshold=vra_threshold)
+                    for minority in num_vra_districts.keys()}
+
+    sa_updaters.update(vra_updaters)
+
+    state_population = 0
+    for node in graph:
+        state_population += graph.nodes[node]["total_pop"]
+    ideal_population = state_population / num_districts
+
+    initial_assignment = recursive_tree_part(
+        graph, range(num_districts),
+        pop_target=ideal_population,
+        pop_col="total_pop",
+        epsilon=constants.POP_EQUALITY_THRESHOLD)
+
+    initial_partition = Partition(graph, initial_assignment, sa_updaters)
 
     weighted_recom_proposal = partial(
         recom,
+        pop_col="total_pop",
+        pop_target=ideal_population,
+        epsilon=constants.POP_EQUALITY_THRESHOLD,
+        node_repeats=2,
         method=partial(
             bipartition_tree,
             spanning_tree_fn=get_county_weighted_random_spanning_tree)
     )
 
+    pop_constraint = constraints.within_percent_of_ideal_population(initial_partition,
+                                                                    pop_equality_threshold)
+    
+    # cut edges in the starting one.
+    # compactness_bound = constraints.UpperBound(
+    #     lambda p: len(p["cut_edges"]),
+    #     2 * len(initial_partition["cut_edges"])
+    # )
 
-def optimize():
+    vra_constraints = [
+        constraints.LowerBound(
+            lambda p: p[f"num_{minority}_vra_districts"],
+            num_districts
+        )
+        for minority, num_districts in num_vra_districts.items()]
+
+    chain = SimulatedAnnealingChain(
+        temp_func=partial(
+            SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
+            num_steps=num_steps),
+        proposal=weighted_recom_proposal,
+        constraints=[
+            pop_constraint,
+            # compactness_bound
+        ],
+        accept=sa_accept_proposal,
+        initial_state=initial_partition,
+        total_steps=num_steps
+    )
+
+    df = pd.DataFrame(
+        columns=[f"district_{i}_score" for i in range(1, num_districts + 1)] \
+            + ["state_gerry_score"],
+        dtype=float
+    )
+
+    good_partitions = []  # min heap based on "goodness" score
+    if verbose:
+        chain_iter = chain.with_progress_bar
+    else:
+        chain_iter = chain
+    for i, partition in enumerate(chain_iter):
+        district_scores, state_score = partition["gerry_scores"]
+        df.loc[len(df.index)] = sorted(list(district_scores.values())) + [state_score]
+
+        # First 10 partitions will be the best 10 so far.
+        if i < 10:
+            heapq.heappush(
+                good_partitions,
+                ScoredPartition(score=state_score, partition=partition)
+            )
+        elif state_score > good_partitions[0].score:  # better than the worst good score.
+            heapq.heapreplace(
+                good_partitions,
+                ScoredPartition(score=state_score, partition=partition)
+            )
+    
+    good_partitions = [obj.partition for obj in good_partitions]
+    return good_partitions, df
+
+
+def optimize(graph_file, communitygen_out_file, vra_config_file, output_dir, num_steps, verbose):
+    """Wrapper function for command-line usage.
+
+    TODO: add an option to start with a specific district map.
     """
-    """
+    gerrychain.random.random.seed(2023)
+
+    graph = Graph.from_json(graph_file)
+    with open(communitygen_out_file, "r") as f:
+        community_data = json.load(f)
+
+    edge_lifetimes = {}
+    for edge, lifetime in community_data["edge_lifetimes"].items():
+        u = edge.split(",")[0][2:-1]
+        v = edge.split(",")[1][2:-2]
+        edge_lifetimes[(u, v)] = lifetime
+
+    with open(vra_config_file, "r") as f:
+        vra_config = json.load(f)
+    
+    vra_threshold = vra_config["opportunity_threshold"]
+    del vra_config["opportunity_threshold"]
+
+    plans, df = generate_districts_simulated_annealing(
+        graph, edge_lifetimes, vra_config, vra_threshold, constants.POP_EQUALITY_THRESHOLD,
+        num_steps, verbose)

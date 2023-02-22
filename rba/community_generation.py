@@ -11,6 +11,7 @@ import networkx as nx
 import numpy as np
 from gerrychain import Graph
 from scipy.spatial import distance
+import matplotlib.pyplot as plt
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -40,6 +41,10 @@ def compute_precinct_similarities(graph, verbose=False):
         max_pop_density = max(max_pop_density, population_density)
         population_densities[node] = population_density
 
+    race_distances = []
+    votes_distances = []
+    pop_density_distances = []
+    similarities = []
     for i, nodes in enumerate(graph.edges):
         node1, node2 = nodes
         if verbose:
@@ -54,11 +59,21 @@ def compute_precinct_similarities(graph, verbose=False):
         race_distance = distance.jensenshannon(race1 / np.sum(race1), race2 / np.sum(race2), 2)
 
         votes1 = [data1[party] for party in ["total_rep", "total_dem"]]
-        votes1.append(data1["total_votes"] - sum(votes1))  # total_other
+        if data1["total_votes"] - sum(votes1) < 0:
+            print("SUS other votes:", data1["total_votes"] - sum(votes1))
+            votes1.append(0)  # total_other
+        else:
+            votes1.append(data1["total_votes"] - sum(votes1))  # total_other
+
         votes2 = [data2[party] for party in ["total_rep", "total_dem"]]
-        votes2.append(data2["total_votes"] - sum(votes2))  # total_other
+        if data2["total_votes"] - sum(votes2) < 0:
+            print("SUS other votes:", data2["total_votes"] - sum(votes2))
+            votes2.append(0)  # total_other
+        else:
+            votes2.append(data2["total_votes"] - sum(votes2))  # total_other
+            
         votes_distance = distance.jensenshannon(votes1 / np.sum(votes1), votes2 / np.sum(votes2), 2)
-        
+            # print(votes1, votes2, votes_distances, "SUS VOTES")
         pop1 = (population_densities[node1]-min_pop_density)/(max_pop_density-min_pop_density)
         pop2 = (population_densities[node2]-min_pop_density)/(max_pop_density-min_pop_density)
         pop_density_distance = abs(pop1 - pop2)
@@ -68,7 +83,18 @@ def compute_precinct_similarities(graph, verbose=False):
             weights=[SIMILARITY_WEIGHTS["race"], SIMILARITY_WEIGHTS["votes"], SIMILARITY_WEIGHTS["pop_density"]])
         # print(similarity, race_distance, votes_distance, pop_density_distance)
         graph.edges[node1, node2]["similarity"] = similarity
-    
+        race_distances.append(race_distance)
+        votes_distances.append(votes_distance)
+        pop_density_distances.append(pop_density_distance)
+        similarities.append(similarity)
+    plt.hist(race_distances, label="race", bins=50)
+    plt.hist(votes_distances, label="votes", bins=50)
+    plt.hist(pop_density_distances, label="pop_density", bins=50)
+    plt.hist(similarities, bins=50)
+    plt.legend()
+    plt.savefig("maryland_similarities.png")
+    # plt.savefig("race_distances_distribution.png")
+    # plt.clear()
     if verbose:
         print()
 
@@ -104,6 +130,7 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
     # edges with lower similarity than the threshold. This means it is possible for a single
     # community to be involved in multiple contractions during a single iteration.
     contractions = []  # Contains lists: [c1, c2, time], where time = 1 - threshold
+    edge_lifetimes_ = []
     for t in range(num_thresholds + 1):
         threshold = 1 - (t / num_thresholds)
         # print(threshold)
@@ -117,11 +144,17 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
                 if frozenset((c1, c2)) not in explored_edges:
                     explored_edges.add(frozenset((c1, c2)))
                     contract = False
+                    total_similarity = 0
+                    i = 0
                     for _, _, similarity in communities.edges[c1, c2]["constituent_edges"]:
-                        if similarity > threshold:
-                            contract = True
-                            break
-                    if contract:
+                        total_similarity += similarity                 
+                        i += 1
+                        # if similarity > threshold:
+                        #     contract = True
+                        #     break
+                    if total_similarity/i > threshold:
+                        # contract = True
+                    # if contract:
                         for edge in communities.edges[c1, c2]["constituent_edges"]:
                             edge_lifetimes[tuple(edge[:2])] = 1 - threshold
 
@@ -136,7 +169,10 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
                             communities.add_edge(c1, neighbor, constituent_edges=c_edges)
                         contractions.append([c1, c2, 1 - threshold])
                         communities.remove_node(c2)
+                        edge_lifetimes_.append(1-threshold)
                         break  # communities.edges has changed. Continue to next iteration.
+    plt.hist(edge_lifetimes_, bins=50)
+    plt.savefig("edge_lifetimes.png")
     # print(edge_lifetimes)
     for edge, lifetime in edge_lifetimes.items():
         if lifetime is None:

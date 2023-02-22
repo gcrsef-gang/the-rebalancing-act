@@ -544,7 +544,7 @@ def merge_empty(graph):
     for node in graph.nodes(data=True):
         node_data = node[1]
         # CUTOFF TO MERGE: 20 PEOPLE
-        if node_data["total_pop"] < 20:
+        if node_data["total_pop"] < 20 or node_data["total_votes"] < 10:
             empty_nodes.append(node[0])
         elif str(node_data["total_pop"]) == "nan":
             empty_nodes.append(node[0])
@@ -1039,8 +1039,8 @@ def serialize_all():
     print("All done!")
 
 if __name__ == "__main__":
-    compress_all_data("final")
-    # merge_graphs()
+    # compress_all_data("final")
+    merge_graphs()
     # serialize_all()
     # serialize(2010, "maryland", checkpoint="beginning")
     # serialize(2010, "north_dakota", checkpoint="geometry")

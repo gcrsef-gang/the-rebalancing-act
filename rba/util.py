@@ -4,10 +4,17 @@
 import json
 import random
 
+import json
 import networkx as nx
+import geopandas as gpd
+import shapely
+import pandas as pd
+import maup
+from pyproj import CRS
+
 
 from . import constants
-from .district_quantification import quantify_gerrymandering
+# from .district_quantification import quantify_gerrymandering
 
 
 def copy_adjacency(graph):
@@ -73,3 +80,39 @@ def save_assignment(partition, fpath):
         assignment[u] = partition.assignment[u]
     with open(fpath, "w+") as f:
         json.dump(assignment, f)
+
+
+def load_districts(graph, district_file, verbose=False):
+    """
+    Given a path to the district boundaries of a state, creates a list of districts and their composition.
+    """
+    district_boundaries = gpd.read_file(district_file)
+    cc = CRS('esri:102008')
+    district_boundaries = district_boundaries.to_crs(cc)
+    if "GEOID10" in district_boundaries.columns:
+        district_boundaries["GEOID10"].type = str
+        district_boundaries.set_index("GEOID10", inplace=True)
+    else: 
+        district_boundaries["GEOID20"].type = str
+        district_boundaries.set_index("GEOID20", inplace=True)
+
+    # graph = nx.readwrite.json_graph.adjacency_graph(graph_json)
+    geodata_dict = {}
+    for node, data in graph.nodes(data=True):
+        data["geoid"] = node
+        data["geometry"] = shapely.geometry.shape(data["geometry"])
+        geodata_dict[node] = data
+    geodata_dataframe = pd.DataFrame.from_dict(geodata_dict, orient='index')
+    geodata = gpd.GeoDataFrame(geodata_dataframe, geometry=geodata_dataframe.geometry, crs='esri:102008')
+    district_assignment = maup.assign(geodata, district_boundaries)
+    district_assignment = district_assignment.astype(str)
+    district_assignment = district_assignment.str.split('.').str[0]
+    district_assignment.to_csv("district_assignment.csv")
+    districts = {}
+    for i, district in district_assignment.iteritems():
+        if district in districts:
+            districts[district].append(i)
+        else:
+            districts[district] = [i]
+    # districts = {district : graph.subgraph(districts[district]).copy() for district in districts}
+    return districts

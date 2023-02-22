@@ -10,51 +10,16 @@ import networkx as nx
 
 from pyproj import CRS
 
+from .util import load_districts
 
-def load_districts(graph_file, district_file, verbose=False):
+def quantify_gerrymandering(state_graph, districts, community_lifespan, verbose=False):
     """
-    Given a path to the district boundaries of a state, creates a list of districts and their composition.
-    """
-    district_boundaries = gpd.read_file(district_file)
-    cc = CRS('esri:102008')
-    district_boundaries = district_boundaries.to_crs(cc)
-    if "GEOID10" in district_boundaries.columns:
-        district_boundaries["GEOID10"].type = str
-        district_boundaries.set_index("GEOID10", inplace=True)
-    else: 
-        district_boundaries["GEOID20"].type = str
-        district_boundaries.set_index("GEOID20", inplace=True)
-    with open(graph_file, "r") as f:
-        graph_json = json.load(f)
-    graph = nx.readwrite.json_graph.adjacency_graph(graph_json)
-    geodata_dict = {}
-    for node, data in graph.nodes(data=True):
-        data["geoid"] = node
-        data["geometry"] = shapely.geometry.shape(data["geometry"])
-        geodata_dict[node] = data
-    geodata_dataframe = pd.DataFrame.from_dict(geodata_dict, orient='index')
-    geodata = gpd.GeoDataFrame(geodata_dataframe, geometry=geodata_dataframe.geometry, crs='esri:102008')
-    district_assignment = maup.assign(geodata, district_boundaries)
-    district_assignment = district_assignment.astype(str)
-    district_assignment = district_assignment.str.split('.').str[0]
-    district_assignment.to_csv("district_assignment.csv")
-    districts = {}
-    for i, district in district_assignment.iteritems():
-        if district in districts:
-            districts[district].append(i)
-        else:
-            districts[district] = [i]
-    district_graphs = {district : graph.subgraph(districts[district]).copy() for district in districts}
-    return graph, district_graphs
-
-def quantify_gerrymandering(state_graph, district_graphs, community_lifespan, verbose=False):
-    """
-    Given a dictionary of district graphs/a state graph as well as dictionary of community boundary lifespan, calculates
+    Given a dictionary of districts to node lists/a state graph as well as dictionary of community boundary lifespan, calculates
     gerrymandering scores for each district and the state.
     """
     # Two lookups 
-    crossdistrict_edges = {district : [] for district in district_graphs}
-    for district, graph in district_graphs.items():
+    crossdistrict_edges = {district : [] for district in districts}
+    for district, graph in districts.items():
             # state_graph.remove_edge(edge[0], edge[1])
         # state_graph.remove_edges_from(graph.edges)
         for node in graph:
@@ -68,7 +33,7 @@ def quantify_gerrymandering(state_graph, district_graphs, community_lifespan, ve
     state_gerrymandering = 0
     district_gerrymanderings = {}
     num_crossedges = sum([len(edge_list) for edge_list in crossdistrict_edges.values()])
-    for district, district_graph in district_graphs.items():
+    for district, node_list in districts.items():
         district_gerrymandering = 0
         # for edge in district_graph.edges():
             # try:
@@ -96,7 +61,10 @@ def quantify_districts(graph_file, district_file, community_file, verbose=False)
     """
     Wraps both functions into a single function for direct use from main.py
     """
-    state_graph, district_graphs = load_districts(graph_file, district_file)
+    with open(graph_file, "r") as f:
+        graph_json = json.load(f)
+    graph = nx.readwrite.json_graph.adjacency_graph(graph_json)
+    districts = load_districts(graph, district_file)
 
     with open(community_file, "r") as f:
         supercommunity_output = json.load(f)  # Contains strings as keys.
@@ -107,6 +75,6 @@ def quantify_districts(graph_file, district_file, community_file, verbose=False)
         v = edge.split(",")[1][2:-2]
         community_lifespan[(u, v)] = lifetime
 
-    district_gerrymanderings, state_gerrymandering = quantify_gerrymandering(state_graph, district_graphs, community_lifespan)
+    district_gerrymanderings, state_gerrymandering = quantify_gerrymandering(graph, districts, community_lifespan)
     print(district_gerrymanderings, state_gerrymandering)
     return district_gerrymanderings, state_gerrymandering

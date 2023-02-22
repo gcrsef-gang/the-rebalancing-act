@@ -16,6 +16,7 @@ import shapely.geometry
 import shapely.ops
 import numpy as np
 import random
+import gerrychain
 
 from . import community_generation
 from . import util
@@ -119,7 +120,7 @@ def visualize_partition_geopandas(partition, *args, **kwargs):
 
 
 def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=None, edge_colors=None,
-        edge_widths=None, node_list=None, additional_polygons=None, text=None, show=False):
+        edge_widths=None, partition=None, node_list=None, additional_polygons=None, text=None, show=False):
     """Creates an image of a map and saves it to a file.
 
     Parameters
@@ -178,8 +179,10 @@ def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=Non
                 edge_width_values.append(edge_widths((u, v)))
                 edge_color_values.append(edge_colors((u, v)))
         except KeyError:
+            # print("THINGS BEING DROPPED", u, v)
             continue
     num_edge_line_strings = len(edge_color_values) - 1
+    split_nodes_num = 0
     for u in node_list:
         u_coords = node_coords(u)
             # print(shapely.geometry.mapping(u_coords))
@@ -187,8 +190,10 @@ def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=Non
         if isinstance(u_coords.boundary, shapely.geometry.MultiLineString):
             for ls in u_coords.boundary.geoms:
                 all_flattened_coords += ls.coords
-            node_end_indices.append(len(all_flattened_coords) - 1)
-            node_color_values.append(node_colors(u))
+                node_end_indices.append(len(all_flattened_coords) - 1)
+                node_color_values.append(node_colors(u))
+                split_nodes_num += 1
+            split_nodes_num -= 1
         else:
             all_flattened_coords += list(u_coords.boundary.coords)
             node_end_indices.append(len(all_flattened_coords) - 1)
@@ -211,7 +216,7 @@ def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=Non
     all_flattened_coords = modify_coords(all_flattened_coords, IMAGE_DIMS)
 
     # Fill in colors (in a lower layer than borders)
-    for i in range(len(node_list)):
+    for i in range(len(node_list)+split_nodes_num):
         if i == 0:
             # Because each edge line string corresponds to two points in the all flattened coords
             start_index = num_edge_line_strings*2 + 2
@@ -240,7 +245,7 @@ def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=Non
         map_image.show()
 
 
-def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num_frames):
+def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num_frames, partition=None):
     """Writes frames for an animated visual of the community generation algorithm to a folder.
     The animation depicts borders between communities as black and borders between precints as gray.
     It also uses edge width as an indicator of similarity, and color as an indicator of
@@ -307,13 +312,17 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
     print("Getting edge coordinates... ", end="")
     sys.stdout.flush()
     edge_coords = {}
+    i = 0
     for u, v in graph.edges:
         intersection = node_coords[u].intersection(node_coords[v])
         if not intersection.is_empty:
             if isinstance(intersection, shapely.geometry.LineString):
                 edge_coords[frozenset((u, v))] = [intersection.coords]
+                # if i == 0:
+                    # i += 1
             elif isinstance(intersection, shapely.geometry.MultiLineString):
                 edge_coords[frozenset((u, v))] = [ls.coords for ls in intersection.geoms]
+                # print([ls.coords for ls in intersection.geoms], "intersection coords")
             elif isinstance(intersection, shapely.geometry.collection.GeometryCollection):
                 edge_coords[frozenset((u,v))] = [ls.coords for ls in intersection.geoms if isinstance(ls, shapely.geometry.LineString)]
             else:
@@ -321,8 +330,9 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
                                 + f" MultiLineString. It is of type {type(intersection)}")
         # else:
             # This is an edge between an island and another precinct, so just connect their centers
-            # print([node_coords[u].centroid.coords, node_coords[v].centroid.coords])
-            # edge_coords[frozenset((u,v))] = [node_coords[u].centroid.coords, node_coords[v].centroid.coords]
+            # print([shapely.geometry.mapping(node_coords[u].centroid), shapely.geometry.mapping(node_coords[v].centroid)])
+            # unwrapped = [shapely.geometry.mapping(node_coords[u].centroid)["coordinates"], shapely.geometry.mapping(node_coords[v].centroid)["coordinates"]]
+            # edge_coords[frozenset((u,v))] = [shapely.geometry.LineString(unwrapped).coords]
             # raise ValueError(f"Overlap not found between {u} and {v}")
     print("Done!")
 
@@ -336,6 +346,7 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
     overall_border = shapely.ops.unary_union([node_coords[u] for u in graph.nodes])
     print("Done!")
 
+
     living_edges = set(frozenset(e) for e in graph.edges)
     unrendered_contractions = [tuple(c) for c in supercommunity_output["contractions"]]  # Not a set because order must be preserved.
     community_graph = util.copy_adjacency(graph)
@@ -343,6 +354,17 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
         community_graph.edges[edge]["constituent_edges"] = {edge}
     for node in community_graph.nodes:
         community_graph.nodes[node]["constituent_nodes"] = {node}
+
+    if isinstance(partition, gerrychain.Partition):
+        assignment = partition.assignment
+        for node in graph.nodes:
+            graph.nodes[node]["partition"] = assignment[node]
+    elif isinstance(partition, str):
+        districts = util.load_districts(graph, partition)
+        for district, node_list in districts.items():
+            for node in node_list:
+                graph.nodes[node]["partition"] = district
+    print("Partition data integrated!")
 
     # Replay supercommunity algorithm
     for f in range(1, num_frames + 1):
@@ -352,9 +374,15 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
         edge_colors = {}
         for u, v in living_edges:
             if edge_lifetimes[frozenset((u, v))] < t:
-                edge_colors[frozenset((u, v))] = (106, 106, 106)
+                if graph.nodes[u]["partition"] != graph.nodes[v]["partition"]:
+                    edge_colors[frozenset((u, v))] = (156, 156, 255)
+                else:
+                    edge_colors[frozenset((u, v))] = (106, 106, 106)
             else:
-                edge_colors[frozenset((u, v))] = (0, 0, 0)
+                if graph.nodes[u]["partition"] != graph.nodes[v]["partition"]:
+                    edge_colors[frozenset((u, v))] = (50, 50, 150)
+                else:
+                    edge_colors[frozenset((u, v))] = (0, 0, 0)
 
         this_iter_contractions = set()
         for c1, c2, time in unrendered_contractions:
@@ -498,7 +526,7 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, n
         graph_image.show()
 
 
-def visualize(output_file, graph_file, edge_lifetime_file, num_frames, verbose):
+def visualize(output_file, graph_file, edge_lifetime_file, num_frames, partition_file, verbose):
     """General visualization function (figures out what to do based on inputs).
 
     TODO: right now this only works for supercommunity animations.
@@ -511,7 +539,7 @@ def visualize(output_file, graph_file, edge_lifetime_file, num_frames, verbose):
     geodata = nx.readwrite.json_graph.adjacency_graph(data)
     community_generation.compute_precinct_similarities(geodata)
 
-    visualize_community_generation(edge_lifetime_file, output_file, geodata, num_frames)
+    visualize_community_generation(edge_lifetime_file, output_file, geodata, num_frames, partition_file)
 
 # def graph_edge_lifetime_distribution(edge_lifetime_path):
 #     with open(edge_lifetime_path, "r") as f:

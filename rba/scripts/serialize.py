@@ -71,9 +71,11 @@ def merge_graphs():
     """
     for year in ["2010", "2020"]:
         for file in os.listdir(final_dir+"/"+year):
-            if "merged" in file or "simplified" in file:
+            if "merged" in file or "simplified" in file or ".7z" in file:
                 continue
             elif os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + "_merged.json")):
+                continue
+            if file == "california_block_geodata.json" and year == "2010":
                 continue
             print(year, file)
             corresponding_file = file[:file.find(".")] + ".json"
@@ -86,6 +88,9 @@ def merge_graphs():
             graph = nx.readwrite.adjacency_graph(data)
             print(f"Total number of nodes: {len(graph.nodes)}")
             merged_graph = merge_empty(graph)
+            if merged_graph == None:
+                print(file, year, "FAILED!")
+                continue
             merged_data = nx.readwrite.adjacency_data(merged_graph)
             # for id, data in merged_graph.nodes(data=True):
                 # print(data)
@@ -98,8 +103,14 @@ def merge_graphs():
                 json.dump(merged_data, f)
                 # data_str = json.dumps(merged_data["nodes"][0])
                 # f.write(data_str)
-            # if os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")):
+            if os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")):
+                # os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")
+                subprocess.call(["7z", "a", os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z"), full_json_path])
                 # os.remove(full_json_path)
+            del data
+            del graph
+            del merged_data
+            del merged_graph
 
 def split_multipolygons(geodata, assignment=None, block_data=None):
     """
@@ -558,7 +569,11 @@ def merge_empty(graph):
             for other_node in graph.neighbors(node):
                 bordering.add(other_node)
         bordering = bordering.difference(set(group))
-        substituted_node = list(bordering)[0]
+        # print(bordering, len(group))
+        try:
+            substituted_node = list(bordering)[0]
+        except IndexError:
+            return None
         geometry = [shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group]
         geometry.append(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]))
         geometry_union = shapely.ops.unary_union(geometry)
@@ -987,7 +1002,7 @@ def serialize(year, state, checkpoint="beginning"):
 
     with open(final_dir + f"/{year}/{state}_geodata.json", "w") as f:
         json.dump(data, f)
-    with open(final_dir + f"/{year}/{state}_block_geodata_help.json", "w") as f:
+    with open(final_dir + f"/{year}/{state}_block_geodata.json", "w") as f:
         json.dump(block_data, f)
 
     # Create a version with merged precincts/blocks under a certain threshold
@@ -1040,8 +1055,8 @@ def serialize_all():
 
 if __name__ == "__main__":
     # compress_all_data("final")
-    # merge_graphs()
+    merge_graphs()
     # serialize_all()
-    serialize(2010, "north_carolina", checkpoint="beginning")
+    # serialize(2010, "north_carolina", checkpoint="graph")
     # serialize(2010, "north_dakota", checkpoint="geometry")
     # serialize(2020, "missouri", checkpoint="graph")       

@@ -48,6 +48,7 @@ if __name__ == "__main__":
     draw_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
     draw_parser.add_argument("--edge_lifetime_file", type=str, default=None)
     draw_parser.add_argument("--num_frames", type=int, default=50)
+    draw_parser.add_argument("--partition_file", type=str, default=None)
     draw_parser.set_defaults(func=rba.visualization.visualize)
 
     optimize_parser = subparsers.add_parser("optimize")

@@ -1,6 +1,7 @@
 """Miscellaneous utilities.
 """
 
+import json
 import random
 
 import networkx as nx
@@ -62,3 +63,13 @@ def get_county_weighted_random_spanning_tree(graph):
         graph, algorithm="kruskal", weight="random_weight"
     )
     return spanning_tree
+
+
+def save_assignment(partition, fpath):
+    """Saves a partition's node assignment data to a file.
+    """
+    assignment = {}
+    for u in partition.graph.nodes:
+        assignment[u] = partition.assignment[u]
+    with open(fpath, "w+") as f:
+        json.dump(assignment, f)

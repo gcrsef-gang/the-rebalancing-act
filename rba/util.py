@@ -3,6 +3,9 @@
 
 import json
 import random
+import time
+
+from collections import defaultdict
 
 from gerrychain import Partition
 from pyproj import CRS
@@ -13,6 +16,7 @@ import pandas as pd
 import maup
 
 from . import constants
+from . import visualization
 # from .district_quantification import quantify_gerrymandering
 
 
@@ -59,16 +63,66 @@ def get_num_vra_districts(partition, label, threshold):
 def get_county_weighted_random_spanning_tree(graph):
     """Applies random edge weights to a graph, then multiplies those weights depending on whether or
     not the edge crosses a county border. Then returns the maximum spanning tree for the graph."""
-    for u, v in graph.edges:
+    # start_time = time.time()
+    county_assignments = defaultdict(list)
+    for u in graph.nodes:
+        county_assignments[graph.nodes[u]["COUNTYFP10"]].append(u)
+    county_graph = nx.Graph()
+    county_graph.add_nodes_from(county_assignments.keys())
+    superedges = defaultdict(list)
+    # print(graph.nodes)
+    # print(type(graph.node_indices), "NODE INDICIES")
+    for edge in graph.edges():
         weight = random.random()
-        if graph.nodes[u]["COUNTYFP10"] == graph.nodes[v]["COUNTYFP10"]:
-            weight *= constants.SAME_COUNTY_PENALTY
-        graph[u][v]["random_weight"] = weight
+        graph.edges[edge]["random_weight"] = weight
+        if graph.nodes[edge[0]]["COUNTYFP10"] != graph.nodes[edge[1]]["COUNTYFP10"]:
+            superedges[frozenset((graph.nodes[edge[0]]["COUNTYFP10"],graph.nodes[edge[1]]["COUNTYFP10"]))].append(edge)
+    for edge in superedges:
+        county_graph.add_edge(tuple(edge)[0], tuple(edge)[1], random_weight=random.random())
+    supercounty_spanning_tree = nx.tree.maximum_spanning_tree(
+            county_graph, algorithm="kruskal", weight="random_weight"
+        )
 
-    spanning_tree = nx.tree.maximum_spanning_tree(
-        graph, algorithm="kruskal", weight="random_weight"
-    )
-    return spanning_tree
+    # county_graph.add_edges_from(superedges.keys())
+    # county_spanning_trees = {}
+    full_spanning_tree = nx.Graph()
+    i = 0
+    for county, node_list in county_assignments.items():
+        county_subgraph = graph.subgraph(node_list)
+        county_spanning_tree = nx.tree.maximum_spanning_tree(
+            county_subgraph, algorithm="kruskal", weight="random_weight"
+        )
+
+        full_spanning_tree = nx.compose(full_spanning_tree, county_spanning_tree)
+        # print(full_spsanning_tree.node_indices())
+        # county_spanning_trees[county] = county_spanning_tree
+    # edge_colors = def ()
+    # visualization.visualize_graph(full_spanning_tree, "before_spanning_tree.png", lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"], show=True)
+    for edge in supercounty_spanning_tree.edges():
+        edge_list = superedges[frozenset(edge)]
+        # print(edge, superedges.keys())
+        chosen_edge = random.choice(edge_list)
+        full_spanning_tree.add_edge(chosen_edge[0], chosen_edge[1])
+        # weight = random.random()
+        # full_spanning_tree.edges[chosen_edge]["random_weight"] = weight*constants.SAME_COUNTY_PENALTY
+    full_spanning_tree.node_indices = graph.node_indices
+    # visualization.visualize_graph(full_spanning_tree, f"spanning_tree_{random.randint(0, 10000)}.png", lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"], show=True)
+    # print(len(full_spanning_tree.nodes()), len(graph.nodes()))
+    # print(len(full_spanning_tree.edges()), len(graph.edges()))
+    # print(time.time()-start_time)
+    return full_spanning_tree
+    
+    # Old spanning tree code which does not work
+    # for u, v in graph.edges:
+    #     weight = random.random()
+    #     if graph.nodes[u]["COUNTYFP10"] == graph.nodes[v]["COUNTYFP10"]:
+    #         weight *= constants.SAME_COUNTY_PENALTY
+    #     graph[u][v]["random_weight"] = weight
+
+    # spanning_tree = nx.tree.maximum_spanning_tree(
+    #     graph, algorithm="kruskal", weight="random_weight"
+    # )
+    # return spanning_tree
 
 
 def save_assignment(partition, fpath):

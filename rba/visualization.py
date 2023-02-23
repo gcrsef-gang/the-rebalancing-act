@@ -17,12 +17,13 @@ import shapely.ops
 import numpy as np
 import random
 import gerrychain
+import matplotlib.pyplot as plt
 
 from . import community_generation
 from . import util
 
-# IMAGE_DIMS = (2000, 2000)
-IMAGE_DIMS = (5000, 5000)
+IMAGE_DIMS = (2000, 2000)
+# IMAGE_DIMS = (5000, 5000)
 IMAGE_BG = "white"
 EDGE_WIDTH_FACTOR = 15
 
@@ -106,7 +107,7 @@ def modify_coords(coords, bounds):
     return new_coords
 
 
-def visualize_partition_geopandas(partition, *args, union=False, **kwargs):
+def visualize_partition_geopandas(partition, *args, union=False, i=None, **kwargs):
     """Visualizes a gerrychain.Partition object using geopandas.
 
     Parameters
@@ -140,6 +141,11 @@ def visualize_partition_geopandas(partition, *args, union=False, **kwargs):
         *args,
         **{key: arg for key, arg in kwargs.items() if key != "union"}
     )
+    if i:
+        plt.savefig(f"partition_plot_{i}.png")
+    else:
+        plt.savefig(f"partition_plot_initial.png")
+    plt.clf()
 
 
 def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=None, edge_colors=None,
@@ -258,7 +264,7 @@ def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=Non
 
     # Text
     if text is not None:
-        fnt = ImageFont.truetype(os.path.join(os.path.dirname(__file__), "assets/UbuntuMono-R.ttf"), 40)
+        fnt = ImageFont.truetype(os.path.join(os.path.dirname(__file__), "assets/UbuntuMono-R.ttf"), 80)
         draw.text([IMAGE_DIMS[0] - 500, 50], text, font=fnt, fill="black")
 
     if output_fpath is not None:
@@ -267,49 +273,7 @@ def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=Non
     if show:
         map_image.show()
 
-
-def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num_frames, partition=None):
-    """Writes frames for an animated visual of the community generation algorithm to a folder.
-    The animation depicts borders between communities as black and borders between precints as gray.
-    It also uses edge width as an indicator of similarity, and color as an indicator of
-    community partisanship.
-    
-    Parameters
-    ----------
-    edge_lifetime_fpath : str
-        Path to JSON file containing edge lifetimes (communitygen ouptut).
-    output_fpath : str
-        Path to directory where frames will be stored as PNG (will be created if necessary).
-    graph : nx.Graph
-        State precinct graph.
-    num_frames : int
-        Number of frames in animation.
-    """
-    print("Loading supercommunity output data... ", end="")
-    sys.stdout.flush()
-    with open(edge_lifetime_fpath, "r") as f:
-        supercommunity_output = json.load(f)  # Contains strings as keys.
-
-    edge_lifetimes = {}
-    for edge, lifetime in supercommunity_output["edge_lifetimes"].items():
-        u = edge.split(",")[0][2:-1]
-        v = edge.split(",")[1][2:-2]
-        edge_lifetimes[frozenset((u, v))] = lifetime
-    print("Done!")
-
-    max_lt = max(edge_lifetimes.values())
-    min_lt = min(edge_lifetimes.values())
-    edge_widths = {
-        edge: int((lt - min_lt) / max_lt * EDGE_WIDTH_FACTOR) + 1 for edge, lt in edge_lifetimes.items()
-    }
-
-    # node_colors = {
-    #     u: get_partisanship_color(graph.nodes[u]["total_rep"] / graph.nodes[u]["total_votes"])
-    #     for u in graph.nodes
-    # }
-    node_colors = {node: (random.randint(20, 235), random.randint(20, 235), random.randint(20, 235)) for node in graph.nodes}
-    random_node_colors = {node: (random.randint(20, 235), random.randint(20, 235), random.randint(20, 235)) for node in graph.nodes}
-
+def get_coords(graph):
     print("Getting node coordinates... ", end="")
     sys.stdout.flush()
     node_coords = {}
@@ -358,16 +322,61 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
             # edge_coords[frozenset((u,v))] = [shapely.geometry.LineString(unwrapped).coords]
             # raise ValueError(f"Overlap not found between {u} and {v}")
     print("Done!")
+    print("Computing outer border of state... ", end="")
+    sys.stdout.flush()
+    overall_border = shapely.ops.unary_union([node_coords[u] for u in graph.nodes])
+    print("Done!")
+
+    return node_coords, edge_coords, overall_border
+
+def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num_frames, partition=None):
+    """Writes frames for an animated visual of the community generation algorithm to a folder.
+    The animation depicts borders between communities as black and borders between precints as gray.
+    It also uses edge width as an indicator of similarity, and color as an indicator of
+    community partisanship.
+    
+    Parameters
+    ----------
+    edge_lifetime_fpath : str
+        Path to JSON file containing edge lifetimes (communitygen ouptut).
+    output_fpath : str
+        Path to directory where frames will be stored as PNG (will be created if necessary).
+    graph : nx.Graph
+        State precinct graph.
+    num_frames : int
+        Number of frames in animation.
+    """
+    print("Loading supercommunity output data... ", end="")
+    sys.stdout.flush()
+    with open(edge_lifetime_fpath, "r") as f:
+        supercommunity_output = json.load(f)  # Contains strings as keys.
+
+    edge_lifetimes = {}
+    for edge, lifetime in supercommunity_output["edge_lifetimes"].items():
+        u = edge.split(",")[0][2:-1]
+        v = edge.split(",")[1][2:-2]
+        edge_lifetimes[frozenset((u, v))] = lifetime
+    print("Done!")
+
+    max_lt = max(edge_lifetimes.values())
+    min_lt = min(edge_lifetimes.values())
+    edge_widths = {
+        edge: int((lt - min_lt) / max_lt * EDGE_WIDTH_FACTOR) + 1 for edge, lt in edge_lifetimes.items()
+    }
+
+    # node_colors = {
+    #     u: get_partisanship_color(graph.nodes[u]["total_rep"] / graph.nodes[u]["total_votes"])
+    #     for u in graph.nodes
+    # }
+    node_colors = {node: (random.randint(20, 235), random.randint(20, 235), random.randint(20, 235)) for node in graph.nodes}
+    random_node_colors = {node: (random.randint(20, 235), random.randint(20, 235), random.randint(20, 235)) for node in graph.nodes}
+
+    node_coords, edge_coords, overall_border = get_coords(graph)
 
     try:
         os.mkdir(output_fpath)
     except FileExistsError:
         pass
-
-    print("Computing outer border of state... ", end="")
-    sys.stdout.flush()
-    overall_border = shapely.ops.unary_union([node_coords[u] for u in graph.nodes])
-    print("Done!")
 
 
     living_edges = set(frozenset(e) for e in graph.edges)
@@ -457,6 +466,41 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
     print()
 
     # ffmpeg -framerate 1 -pattern_type glob -i "NH-communitygen/*.png" -c:v libx264 out.mp4
+
+def visualize_metric(output_fpath, graph, metric_name):
+    """Visualizes a nx.Graph object with some kind of metric
+    """
+    edge_colors = {frozenset(edge) : (255, 255, 255) for edge in graph.edges()}
+    edge_widths = {frozenset(edge) : 1 for edge in graph.edges()}
+
+    node_colors = {}
+    if metric_name == "z_score":
+        max_z_score = -1e10
+        min_z_score = 1e10
+        for node in graph.nodes():
+            z_score = graph.nodes[node][metric_name]
+            max_z_score = max(z_score, max_z_score)
+            min_z_score = min(z_score, min_z_score)
+        print(max_z_score, min_z_score)
+        for node in graph.nodes():
+            z_score = graph.nodes[node][metric_name]
+            if z_score < 0:
+                node_colors[node] = (round(255*(z_score)/max_z_score), 0, round(255*(z_score)/max_z_score))
+            else:
+                node_colors[node] = (0, round(255*(z_score)/min_z_score), 0)
+
+    node_coords, edge_coords, overall_border = get_coords(graph)
+    visualize_map(
+        graph,
+        output_fpath,
+        lambda u: node_coords[u],
+        lambda e: edge_coords[frozenset(e)],
+        lambda u: node_colors[u],
+        lambda e: edge_colors[frozenset(e)],
+        lambda e: edge_widths[frozenset(e)],
+        additional_polygons=[overall_border],
+        text=f"{metric_name}",
+        show=False)
 
 
 def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, node_sizes=None, show=False):

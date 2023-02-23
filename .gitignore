@@ -13,3 +13,4 @@ district_assignment.csv
 maup_concated.csv
 
 examples/.ipynb_checkpoints
+examples/*out

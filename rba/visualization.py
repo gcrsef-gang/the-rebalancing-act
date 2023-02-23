@@ -106,17 +106,40 @@ def modify_coords(coords, bounds):
     return new_coords
 
 
-def visualize_partition_geopandas(partition, *args, **kwargs):
+def visualize_partition_geopandas(partition, *args, union=False, **kwargs):
     """Visualizes a gerrychain.Partition object using geopandas.
+
+    Parameters
+    ----------
+    partition : gerrychain.Partition
+        Partition to visualize.
+    union : boolean, default=False
+        Whether or not to visualize the partitions as a single polygon, as opposed to just showing
+        their assignment by coloring.
+    Also takes any parameters taken by geopandas.GeoDataFrame.plot()
     """
-    data = {"assignment": [], "geometry": []}
-    for node in partition.graph:
-        data["assignment"].append(partition.assignment[node])
-        data["geometry"].append(shapely.geometry.shape(partition.graph.nodes[node]['geometry']))
+    if union:
+        data = {"assignment": [], "geometry": []}
+
+        for part in partition.parts:
+            data["assignment"].append(part)
+            geoms = [shapely.geometry.shape(partition.graph.nodes[node]["geometry"])
+                     for node in partition.parts[part]]
+            data["geometry"].append(shapely.ops.unary_union(geoms))
+
+    else:
+        data = {"assignment": [], "geometry": []}
+        for node in partition.graph:
+            data["assignment"].append(partition.assignment[node])
+            data["geometry"].append(shapely.geometry.shape(partition.graph.nodes[node]["geometry"]))
 
     gdf = geopandas.GeoDataFrame(data)
     del data
-    gdf.plot(column="assignment", *args, **kwargs)
+    gdf.plot(
+        column="assignment",
+        *args,
+        **{key: arg for key, arg in kwargs.items() if key != "union"}
+    )
 
 
 def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=None, edge_colors=None,

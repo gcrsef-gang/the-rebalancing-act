@@ -22,8 +22,8 @@ import pandas as pd
 
 from . import constants
 from .district_quantification import quantify_gerrymandering
-from .util import (get_num_vra_districts, load_districts, get_county_border_proportion,
-                   save_assignment)
+from .util import (get_num_vra_districts, load_districts, get_county_spanning_forest,
+                   save_assignment, choose_cut)
 
 
 class SimulatedAnnealingChain(MarkovChain):
@@ -179,23 +179,24 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
 
     initial_partition = Partition(graph, initial_assignment, sa_updaters)
 
-    # weighted_recom_proposal = partial(
-    #     recom,
-    #     pop_col="total_pop",
-    #     pop_target=ideal_population,
-    #     epsilon=constants.POP_EQUALITY_THRESHOLD,
-    #     node_repeats=2,
-    #     method=partial(
-    #         bipartition_tree,
-    #         spanning_tree_fn=get_county_weighted_random_spanning_tree)
-    # )
-
-    recom_proposal = partial(recom,
+    county_recom_proposal = partial(
+        recom,
         pop_col="total_pop",
         pop_target=ideal_population,
         epsilon=constants.POP_EQUALITY_THRESHOLD,
-        node_repeats=2
+        node_repeats=2,
+        method=partial(
+            bipartition_tree,
+            spanning_tree_fn=get_county_spanning_forest,
+            choice=partial(choose_cut, graph=graph))
     )
+
+    # recom_proposal = partial(recom,
+    #     pop_col="total_pop",
+    #     pop_target=ideal_population,
+    #     epsilon=constants.POP_EQUALITY_THRESHOLD,
+    #     node_repeats=2
+    # )
 
     pop_constraint = constraints.within_percent_of_ideal_population(initial_partition,
                                                                     pop_equality_threshold)
@@ -220,8 +221,8 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
         get_temperature=partial(
             SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
             num_steps=num_steps),
-        # proposal=weighted_recom_proposal,
-        proposal=recom_proposal,
+        proposal=county_recom_proposal,
+        # proposal=recom_proposal,
         constraints=[
             pop_constraint,
             # compactness_bound

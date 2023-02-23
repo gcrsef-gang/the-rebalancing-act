@@ -4,7 +4,8 @@
 import json
 import random
 
-from gerrychain import Partition
+from gerrychain import Graph, Partition
+from gerrychain.tree import Cut, random_spanning_tree
 from pyproj import CRS
 import networkx as nx
 import geopandas as gpd
@@ -69,6 +70,57 @@ def get_county_weighted_random_spanning_tree(graph):
         graph, algorithm="kruskal", weight="random_weight"
     )
     return spanning_tree
+
+
+def get_county_spanning_forest(graph):
+    """Generates a random spanning forest based on a random spanning tree of the county dual graph
+    as well as a random spanning tree for each of the precinct subgraphs induced by the counties.
+    """
+    # Construct county spanning tree
+    county_dual_graph = Graph()
+    for node in graph.nodes:
+        county = graph.nodes[node]["COUNTYFP10"]
+        if county not in county_dual_graph.nodes:
+            county_dual_graph.add_node(county, precincts=[node])
+        else:
+            county_dual_graph.nodes[county]["precincts"].append(node)
+    for u, v in graph.edges:
+        u_county = graph.nodes[u]["COUNTYFP10"]
+        v_county = graph.nodes[v]["COUNTYFP10"]
+        if v_county not in county_dual_graph[u_county]:
+            # This edge in the precinct graph will be used to represent the edge in the county graph.
+            county_dual_graph.add_edge(u_county, v_county, repr_edge=(u, v))
+    county_spanning_tree = random_spanning_tree(county_dual_graph)
+
+    precinct_spanning_tree = Graph(nodes=graph.nodes)
+    # Construct precinct spanning trees for each county.
+    for county in county_dual_graph.nodes:
+        tree = random_spanning_tree(graph.subgraph(county_dual_graph.nodes[county]["precincts"]))
+        for u, v in tree.edges:
+            precinct_spanning_tree.add_edge(u, v)
+    for _, _, attrs in county_spanning_tree.edges(data=True):
+        u, v = attrs["repr_edge"]
+        precinct_spanning_tree.add_edge(u, v)
+
+    return precinct_spanning_tree
+
+
+def choose_cut(possible_cuts, graph):
+    """Chooses an edge to cut from a spanning tree from a list of cuts that would preserve
+    population equality. Biased towards cuts along county lines.
+    """
+    if isinstance(possible_cuts[0], Cut):
+        weights = []
+        for cut in possible_cuts:
+            if graph.nodes[cut.edge[0]]["COUNTYFP10"] == graph.nodes[cut.edge[1]]["COUNTYFP10"]:
+                weights.append(constants.SAME_COUNTY_PENALTY)
+            else:
+                weights.append(1)
+        return random.choices(possible_cuts, weights=weights)[0]
+    # GerryChain also uses this function to choose a random node for the root of its search, so we
+    # need to provide functionality for that as well.
+    else:
+        return random.choice(possible_cuts)
 
 
 def save_assignment(partition, fpath):

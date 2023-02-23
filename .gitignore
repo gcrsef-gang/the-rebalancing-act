@@ -14,3 +14,5 @@ maup_concated.csv
 TODO
 
 examples/.ipynb_checkpoints
+examples/*out
+

@@ -1,16 +1,16 @@
 """Miscellaneous utilities.
 """
 
+import json
 import random
 
-import json
+from gerrychain import Partition
+from pyproj import CRS
 import networkx as nx
 import geopandas as gpd
 import shapely
 import pandas as pd
 import maup
-from pyproj import CRS
-
 
 from . import constants
 # from .district_quantification import quantify_gerrymandering
@@ -69,6 +69,36 @@ def get_county_weighted_random_spanning_tree(graph):
         graph, algorithm="kruskal", weight="random_weight"
     )
     return spanning_tree
+
+
+def save_assignment(partition, fpath):
+    """Saves a partition's node assignment data to a file.
+    """
+    assignment = {}
+    for u in partition.graph.nodes:
+        assignment[u] = partition.assignment[u]
+    with open(fpath, "w+") as f:
+        json.dump(assignment, f)
+
+
+def partition_by_county(graph):
+    """Returns a partition which splits the graph by county.
+    """
+    assignment = {}
+    for u in graph.nodes:
+        assignment[u] = graph.nodes[u]["COUNTYFP10"]
+    return Partition(graph, assignment)
+
+
+def get_county_border_proportion(partition):
+    """Returns the proportion of cross-district edges that are also cross-county edges.
+    """
+    num_cross_county_edges = 0
+    for u, v in partition["cut_edges"]:
+        if partition.graph.nodes[u]["COUNTYFP10"] != partition.graph.nodes[v]["COUNTYFP10"]:
+            num_cross_county_edges += 1
+    return num_cross_county_edges / len(partition["cut_edges"])
+
 
 def load_districts(graph, district_file, verbose=False):
     """

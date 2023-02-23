@@ -7,7 +7,8 @@ Commands
     Generates `num_thresholds` community maps based on the precinct graph `graph`, and writes to a
     file storing a list of individual communities, containing data on constituent precincts, birth 
     and death times.
- - districtgen [--graph_file] [--edge_lifetimes_file] [--vra_config] [--output_dir]
+ - optimize [--graph_file] [--communitygen_out_file] [--vra_config_file] [--num_steps]
+            [--num_districts] [--initial_plan_file] [--output_dir]
     Runs simulated annealing algorithm, saves the ten best maps, as well as a dataframe keeping
     track of various statistics for each state of the chain. `vra_config` is a JSON file
     containing information about minority-opportunity district constraints.
@@ -53,9 +54,13 @@ if __name__ == "__main__":
 
     optimize_parser = subparsers.add_parser("optimize")
     optimize_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
-    optimize_parser.add_argument("--edge_lifetime_file", type=str)
-    optimize_parser.add_argument("--vra_config", type=str)
-    optimize_parser.add_argument("--output_dir", type=str)
+    optimize_parser.add_argument("--communitygen_out_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
+    optimize_parser.add_argument("--vra_config_file", type=str, default=os.path.join(package_dir, "data/2010/vra_nh.json"))
+    optimize_parser.add_argument("--num_steps", type=int, default=100)
+    optimize_parser.add_argument("--num_districts", type=int, default=2)
+    optimize_parser.add_argument("--initial_plan_file", type=str, default=None)
+    optimize_parser.add_argument("-o", "--output_dir", type=str)
+    optimize_parser.set_defaults(func=rba.optimization.optimize)
 
     args = parser.parse_args()
     args.func(**{key: val for key, val in vars(args).items() if key != "func"})

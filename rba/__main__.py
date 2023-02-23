@@ -55,7 +55,7 @@ if __name__ == "__main__":
     optimize_parser = subparsers.add_parser("optimize")
     optimize_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
     optimize_parser.add_argument("--communitygen_out_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
-    optimize_parser.add_argument("--vra_config_file", type=str, default=os.path.join(package_dir, "../examples/vra_nh.json"))
+    optimize_parser.add_argument("--vra_config_file", type=str, default=os.path.join(package_dir, "data/2010/vra_nh.json"))
     optimize_parser.add_argument("--num_steps", type=int, default=100)
     optimize_parser.add_argument("--num_districts", type=int, default=2)
     optimize_parser.add_argument("--initial_plan_file", type=str, default=None)

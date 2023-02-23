@@ -22,7 +22,7 @@ import pandas as pd
 
 from . import constants
 from .district_quantification import quantify_gerrymandering
-from .util import (get_num_vra_districts, get_county_weighted_random_spanning_tree, load_districts,
+from .util import (get_num_vra_districts, load_districts, get_county_border_proportion,
                    save_assignment)
 
 
@@ -137,7 +137,11 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
 
     Returns
     -------
-    good_partitions : list of 
+    good_partitions : list of gerrychain.Partition
+        Contains the 10 best districting plans obtained by the algorithm.
+    df : pandas.DataFrame
+        Contains gerrymandering scores of the state and all the districts as well as the temperature
+        for each iteration of the algorithm.
     """
 
     sa_updaters = {
@@ -209,6 +213,9 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
         )
         for minority, num_districts in num_vra_districts.items()]
 
+    # acceptance_func = lambda curr, next_, t: sa_accept_proposal(curr, next_, t) \
+    #                                      and random.random() < get_county_border_proportion(next_)
+
     chain = SimulatedAnnealingChain(
         get_temperature=partial(
             SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
@@ -218,7 +225,7 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
         constraints=[
             pop_constraint,
             # compactness_bound
-        ],
+        ] + vra_constraints,
         accept=sa_accept_proposal,
         initial_state=initial_partition,
         total_steps=num_steps
@@ -267,6 +274,7 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
     """Wrapper function for command-line usage.
     """
     gerrychain.random.random.seed(2023)
+    random.seed(2023)
 
     if verbose:
         print("Loading precinct graph...", end="")

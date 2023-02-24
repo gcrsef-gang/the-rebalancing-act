@@ -129,31 +129,61 @@ def get_county_weighted_random_spanning_tree(graph):
 def get_county_spanning_forest(graph):
     """Generates a random spanning forest based on a random spanning tree of the county dual graph
     as well as a random spanning tree for each of the precinct subgraphs induced by the counties.
+    Accounts for the possibility of counties being noncontiguous as a result of the nodes chosen in
+    `graph`.
     """
-    # Construct county spanning tree
-    county_dual_graph = Graph()
-    for node in graph.nodes:
-        county = graph.nodes[node]["COUNTYFP10"]
-        if county not in county_dual_graph.nodes:
-            county_dual_graph.add_node(county, precincts=[node])
+    # Construct a graph with each node being a connected component of nodes that are all in the
+    # same county.
+    county_assignment = {}  # Maps counties to a list of all their precincts.
+    for precinct in graph.nodes:
+        county = graph.nodes[precinct]["COUNTYFP10"]
+        if county not in county_assignment:
+            county_assignment[county] = [precinct]
         else:
-            county_dual_graph.nodes[county]["precincts"].append(node)
-    for u, v in graph.edges:
-        u_county = graph.nodes[u]["COUNTYFP10"]
-        v_county = graph.nodes[v]["COUNTYFP10"]
-        if v_county not in county_dual_graph[u_county]:
-            # This edge in the precinct graph will be used to represent the edge in the county graph.
-            county_dual_graph.add_edge(u_county, v_county, repr_edge=(u, v))
-    county_spanning_tree = random_spanning_tree(county_dual_graph)
+            county_assignment[county].append(precinct)
+    
+    super_graph = Graph()        
+    super_graph_assignment = {}  # Maps precincts to the county-component they are in.
 
-    precinct_spanning_tree = Graph(nodes=graph.nodes)
+    # Determine nodes of super graph
+    for county, precincts in county_assignment.items():
+        subgraph = graph.subgraph(precincts)
+        components = list(nx.connected_components(subgraph))
+        if len(components) > 1:
+            for i, component in enumerate(components):
+                super_node = f"{county}-{i}"
+                for precinct in component:
+                    super_graph_assignment[precinct] = super_node
+                super_graph.add_node(super_node, subgraph=subgraph.subgraph(component))
+        else:
+            for precinct in precincts:
+                super_graph_assignment[precinct] = county
+            super_graph.add_node(county, subgraph=subgraph)
+
+    # Determine edges of super graph
+    for u, v in graph.edges:
+        u_super_node = super_graph_assignment[u]
+        v_super_node = super_graph_assignment[v]
+        if u_super_node == v_super_node:
+            continue
+        if v_super_node not in super_graph[u_super_node]:
+            super_graph.add_edge(u_super_node, v_super_node, constituent_edges=[frozenset((u, v))])
+        else:
+            super_graph[u_super_node][v_super_node]["constituent_edges"].append(frozenset((u, v)))
+
+    super_spanning_tree = random_spanning_tree(super_graph)
+
+    precinct_spanning_tree = Graph()
     # Construct precinct spanning trees for each county.
-    for county in county_dual_graph.nodes:
-        tree = random_spanning_tree(graph.subgraph(county_dual_graph.nodes[county]["precincts"]))
-        for u, v in tree.edges:
-            precinct_spanning_tree.add_edge(u, v)
-    for _, _, attrs in county_spanning_tree.edges(data=True):
-        u, v = attrs["repr_edge"]
+    for super_node, subgraph in super_spanning_tree.nodes(data="subgraph"):
+        sub_tree = random_spanning_tree(subgraph)
+        precinct_spanning_tree = nx.compose(precinct_spanning_tree, sub_tree)
+    
+    assert len(precinct_spanning_tree.nodes) == len(graph.nodes)
+
+    # Connect individual spanning trees.
+    for _, _, attrs in super_spanning_tree.edges(data=True):
+        u, v = random.choice(attrs["constituent_edges"])
         precinct_spanning_tree.add_edge(u, v)
 
     return precinct_spanning_tree

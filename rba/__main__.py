@@ -52,6 +52,13 @@ if __name__ == "__main__":
     draw_parser.add_argument("--partition_file", type=str, default=None)
     draw_parser.set_defaults(func=rba.visualization.visualize)
 
+    ensemble_parser = subparsers.add_parser("ensemble")
+    ensemble_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
+    ensemble_parser.add_argument("--community_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
+    ensemble_parser.add_argument("--vra_config_file", type=str, default=os.path.join(package_dir, "data/2010/vra_nh.json"))
+    ensemble_parser.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
+    ensemble_parser.set_defaults(func=rba.ensemble.ensemble_analysis)
+
     optimize_parser = subparsers.add_parser("optimize")
     optimize_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
     optimize_parser.add_argument("--communitygen_out_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))

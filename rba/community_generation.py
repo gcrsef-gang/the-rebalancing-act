@@ -79,8 +79,11 @@ def compute_precinct_similarities(graph, verbose=False):
         pop_density_distance = abs(pop1 - pop2)
 
         similarity = 1 - np.average(
-            [race_distance, votes_distance, pop_density_distance],
-            weights=[SIMILARITY_WEIGHTS["race"], SIMILARITY_WEIGHTS["votes"], SIMILARITY_WEIGHTS["pop_density"]])
+            [race_distance, pop_density_distance],
+            weights=[SIMILARITY_WEIGHTS["race"], SIMILARITY_WEIGHTS["pop_density"]])
+        # similarity = 1 - np.average(
+        #     [race_distance, votes_distance, pop_density_distance],
+        #     weights=[SIMILARITY_WEIGHTS["race"], SIMILARITY_WEIGHTS["votes"], SIMILARITY_WEIGHTS["pop_density"]])
         # print(similarity, race_distance, votes_distance, pop_density_distance)
         graph.edges[node1, node2]["similarity"] = similarity
         race_distances.append(race_distance)

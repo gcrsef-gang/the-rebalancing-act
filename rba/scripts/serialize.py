@@ -69,13 +69,21 @@ def merge_graphs():
     """
     This function automatically decompresses, merges empty precincts/blocks, and then recompresses.
     """
+    # for year in ["2010", "2020"]:
+    #     for file in os.listdir(final_dir+"/"+year):
+    #         if "merged" in file:
+    #             os.remove(os.path.join(final_dir+"/"+year, file))
     for year in ["2010", "2020"]:
         for file in os.listdir(final_dir+"/"+year):
             if "merged" in file or "simplified" in file or ".7z" in file:
                 continue
             elif os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + "_merged.json")):
                 continue
-            if file == "california_block_geodata.json" and year == "2010":
+            if year == "2010" and "california_block" in file:
+                continue
+            if year == "2010" and "colorado_block" in file:
+                continue
+            if year == "2010" and "georgia_block" in file:
                 continue
             print(year, file)
             corresponding_file = file[:file.find(".")] + ".json"
@@ -87,7 +95,18 @@ def merge_graphs():
                 data = json.load(f)
             graph = nx.readwrite.adjacency_graph(data)
             print(f"Total number of nodes: {len(graph.nodes)}")
-            merged_graph = merge_empty(graph)
+            # counties = defaultdict(list)
+            # for node in graph.nodes:
+                # if year == 2010:
+                    # counties[graph.nodes[node]["COUNTYFP10"]].append(node)
+                # else:
+                    # counties[graph.nodes[node]["COUNTYFP20"]].append(node)
+            # full_merged_graph = nx.Graph()
+            # for county in counties:
+                # county_subgraph = graph.subgraph(counties[county])
+                # merged_subgraph = merge_empty(county_subgraph)
+                # full_merged_graph = nx.compose(merged_subgraph)
+            merged_graph = merge_empty(graph, year)
             if merged_graph == None:
                 print(file, year, "FAILED!")
                 continue
@@ -97,15 +116,10 @@ def merge_graphs():
                 # merged_data["geometry"] = shapely.geometry.mapping(data['geometry'])
             merged_corresponding_file = file[:file.find(".")] + "_merged.json"  
             with open(os.path.join(final_dir+"/"+year, merged_corresponding_file), "w") as f:
-                # for i in range(len(merged_data["nodes"])):
-                    # print(merged_data["nodes"][i])
-                    # json.dump(merged_data["nodes"][i], f)
                 json.dump(merged_data, f)
-                # data_str = json.dumps(merged_data["nodes"][0])
-                # f.write(data_str)
-            if os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")):
+            # if os.path.isfile(os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")):
                 # os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z")
-                subprocess.call(["7z", "a", os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z"), full_json_path])
+                # subprocess.call(["7z", "a", os.path.join(final_dir+"/"+year, file[:file.find(".")] + ".7z"), full_json_path])
                 # os.remove(full_json_path)
             del data
             del graph
@@ -160,6 +174,8 @@ def split_multipolygons(geodata, assignment=None, block_data=None):
                                 used += block_geoid
                     # The precinct is so small that it didn't match up to any blocks - 
                     # Add a "fake" row with 0 values inside so that the hole matchings don't create problems
+                    if new_geoid == "060270004004s1":
+                        print("CAUGHT AND SEEN!", new_row)
                     if len(new_row) == 0:
                         for column, _ in row.iteritems():
                             # Obviously use precinct polygon geometry, not block geometry
@@ -172,8 +188,13 @@ def split_multipolygons(geodata, assignment=None, block_data=None):
                                     new_row[column] = 0
                                 else:
                                     new_row[column] = None
+                                if new_geoid == "060270004004s1":
+                                    print(column, type(block_data[column].iloc[0]), "column things")
                             else:
                                 new_row[column] = None
+                    if new_geoid == "060270004004s1":
+                        print(block_data[column].iloc[0])
+                        print(block_data[column].iloc[0].types)
                             # print("PROBLEM: No Blocks added in precinct", new_geoid, geoid, blocks, polygon)
                     rows_to_add[new_geoid] = new_row
                 row_geoids_to_remove.append(geoid)
@@ -346,7 +367,7 @@ def convert_to_graph(geodata):
     start_time = time.time()
     min_yes = bounds["miny"]
     # Can be changed!
-    dividers = round(math.pow(len(geodata),1/3))
+    dividers = round(math.pow(len(geodata),1/2))
     print(f"Number of dividers: {dividers}")
     min_yes_list = []
     for geoid, min_y in min_yes.items():
@@ -546,7 +567,7 @@ def connect_islands(graph):
         del graph_components_dict[overall_min_connection[1]]
     return graph
 
-def merge_empty(graph):
+def merge_empty(graph, year):
     """
     This function takes a graph and merges precincts/blocks with a cutoff less than 20 people with other precincts/blocks
     """
@@ -563,31 +584,54 @@ def merge_empty(graph):
     print(f"Nodes below population cutoff to merge: {len(empty_nodes)}")
     empty_graph = graph.subgraph(empty_nodes)
     empty_groups = list(nx.algorithms.connected_components(empty_graph))
+
+    groups_to_add = []
+    groups_to_remove = []
     for group in empty_groups:
-        bordering = set()
+        subgraph = graph.subgraph(group).copy()
+        remove = False
+        if year == "2010":
+            for edge in graph.subgraph(group).edges():
+                if graph.nodes[edge[0]]["COUNTYFP10"] != graph.nodes[edge[1]]["COUNTYFP10"]:
+                    remove = True
+                    subgraph.remove_edge(edge[0], edge[1])
+        else:
+            for edge in graph.subgraph(group).edges():
+                if graph.nodes[edge[0]]["COUNTYFP20"] != graph.nodes[edge[1]]["COUNTYFP20"]:
+                    remove = True
+                    subgraph.remove_edge(edge[0], edge[1])
+        groups_to_add += list(nx.algorithms.connected_components(subgraph))
+        if remove:
+            groups_to_remove.append(group)
+    for group in groups_to_remove:
+        empty_groups.remove(group)
+    for group in groups_to_add:
+        empty_groups.append(group)
+
+    print(graph.nodes["33007CAMB01"])
+    for group in empty_groups:
+        total_group_pop = 0
+        total_group_votes = 0
         for node in group:
-            for other_node in graph.neighbors(node):
-                bordering.add(other_node)
-        bordering = bordering.difference(set(group))
-        # print(bordering, len(group))
-        try:
+            if str(graph.nodes[node]["total_pop"]) != "nan":
+                total_group_pop += graph.nodes[node]["total_pop"]
+                total_group_votes += graph.nodes[node]["total_votes"]
+        if total_group_votes >= 10 and total_group_pop >= 20:
+            substituted_node = group[0]
+        else:
+            bordering = set()
+            for node in group:
+                for other_node in graph.neighbors(node):
+                    bordering.add(other_node)
+            bordering = bordering.difference(set(group))
+            # try:
             substituted_node = list(bordering)[0]
-        except IndexError:
-            return None
+            # except IndexError:
+                # return None
         geometry = [shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group]
         geometry.append(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]))
         geometry_union = shapely.ops.unary_union(geometry)
         for node in group:
-            # if isinstance(geometry_union, shapely.geometry.MultiPolygon):
-            if substituted_node == "2403914-001" and node == "2403910-002s4":
-                # if isinstance(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]), shapely.geometry.MultiPolygon):
-                # if substituted_node == "2402502-014" and group[0] == "2402502-005s2":
-                    # print(shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"])))
-                    # print([graph.nodes[node]["geometry"] for node in group])
-                print(graph.nodes[substituted_node]["geometry"])
-                print(geometry)
-                print(group, substituted_node)
-                print(list(graph.neighbors("2403910-002s4")))
             if node in fake_nodes:
                 continue
             graph.nodes[substituted_node]["total_pop"] += graph.nodes[node]["total_pop"]
@@ -1057,6 +1101,7 @@ if __name__ == "__main__":
     # compress_all_data("final")
     merge_graphs()
     # serialize_all()
-    # serialize(2010, "north_carolina", checkpoint="graph")
-    # serialize(2010, "north_dakota", checkpoint="geometry")
-    # serialize(2020, "missouri", checkpoint="graph")       
+    # serialize(2010, "california", checkpoint="integration")
+    # serialize(2010, "colorado", checkpoint="beginning")
+    # serialize(2010, "georgia", checkpoint="beginning")       
+    # serialize(2010, "north_carolina", checkpoint="beginning")

@@ -77,4 +77,4 @@ def quantify_districts(graph_file, district_file, community_file, verbose=False)
 
     district_gerrymanderings, state_gerrymandering = quantify_gerrymandering(graph, districts, community_lifespan)
     print(district_gerrymanderings, state_gerrymandering)
-    return district_gerrymanderings, state_gerrymandering
+    return districts, district_gerrymanderings, state_gerrymandering

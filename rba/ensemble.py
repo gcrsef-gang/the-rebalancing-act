@@ -172,7 +172,7 @@ def generate_ensemble(graph, edge_lifetimes, num_vra_districts, vra_threshold,
         pop_col="total_pop",
         pop_target=ideal_population,
         epsilon=pop_equality_threshold,
-        node_repeats=2,
+        node_repeats=6,
         # method=partial(
         #     bipartition_tree,
         #     spanning_tree_fn=get_county_weighted_random_spanning_tree)
@@ -293,10 +293,6 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
 
     scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
 
-    # Save a histogram of statewide scores.
-    plt.hist(scores_df["state_gerry_score"], bins=10)
-    plt.savefig(os.path.join(output_dir, "score_distribution.png"))
-
     create_folder(os.path.join(output_dir, "visuals"))
 
     if verbose:
@@ -359,7 +355,7 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
 
     districts_precinct_df = pd.DataFrame(columns=["score", "homogeneity"], index=sorted_node_names)
     district_node_sets = load_districts(graph, district_file, verbose)
-    district_scores, _ = quantify_gerrymandering(graph, district_node_sets, edge_lifetimes, verbose)
+    district_scores, state_score = quantify_gerrymandering(graph, district_node_sets, edge_lifetimes, verbose)
     for district, precincts in district_node_sets.items():
         homogeneity = statistics.stdev(
             [graph.nodes[node]["total_rep"] / graph.nodes[node]["total_votes"]
@@ -367,6 +363,12 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
         )
         for precinct in precincts:
             districts_precinct_df.loc[precinct] = [district_scores[district], homogeneity]
+
+    # Save a histogram of statewide scores.
+    plt.hist(scores_df["state_gerry_score"], bins=30)
+    plt.axvline(scores_df["state_gerry_score"].mean(), color='k', linestyle='dashed', linewidth=1)
+    plt.axvline(state_score, color='red', linestyle='solid', linewidth=1)
+    plt.savefig(os.path.join(output_dir, "score_distribution.png"))
 
     # Create gerrymandering and packing/cracking heatmaps for the inputted districting plan.
 
@@ -393,6 +395,7 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
         clear=False,
         ax=ax,
         legend=True,
+        # img_path=os.path.join(output_dir, "gradient_score.png")
     )
     visualize_partition_geopandas(
         districts_partition,

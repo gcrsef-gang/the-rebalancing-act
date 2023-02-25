@@ -81,8 +81,6 @@ def get_county_weighted_random_spanning_tree(graph):
     county_graph = nx.Graph()
     county_graph.add_nodes_from(county_assignments.keys())
     superedges = defaultdict(list)
-    # print(graph.nodes)
-    # print(type(graph.node_indices), "NODE INDICIES")
     for edge in graph.edges():
         weight = random.random()
         graph.edges[edge]["random_weight"] = weight
@@ -195,6 +193,8 @@ def get_county_spanning_forest(graph):
     for _, _, attrs in super_spanning_tree.edges(data=True):
         u, v = random.choice(attrs["constituent_edges"])
         precinct_spanning_tree.add_edge(u, v)
+
+    # visualization.visualize_graph(precinct_spanning_tree, f"spanning_tree.png", lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"])
 
     return precinct_spanning_tree
 

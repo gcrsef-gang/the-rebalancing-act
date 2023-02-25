@@ -65,6 +65,11 @@ def compress_simplified_graphs():
                     full_path = final_dir + "/" + year + "/" + file
                     subprocess.call(["7z", "a", full_7z_path, full_path])
 
+def remove_merged_files():
+    for year in ["2010", "2020"]:
+        for file in os.listdir(final_dir+"/"+year):
+            if "merged" in file:
+                os.remove(final_dir + "/" + year + "/" + file)
 def merge_graphs():
     """
     This function automatically decompresses, merges empty precincts/blocks, and then recompresses.
@@ -106,7 +111,10 @@ def merge_graphs():
                 # county_subgraph = graph.subgraph(counties[county])
                 # merged_subgraph = merge_empty(county_subgraph)
                 # full_merged_graph = nx.compose(merged_subgraph)
-            merged_graph = merge_empty(graph, year)
+            if year == "2010":
+                merged_graph = merge_empty(graph, "COUNTYFP10")
+            else:
+                merged_graph = merge_empty(graph, "COUNTYFP20")
             if merged_graph == None:
                 print(file, year, "FAILED!")
                 continue
@@ -567,7 +575,7 @@ def connect_islands(graph):
         del graph_components_dict[overall_min_connection[1]]
     return graph
 
-def merge_empty(graph, year):
+def merge_empty(graph, county_key):
     """
     This function takes a graph and merges precincts/blocks with a cutoff less than 20 people with other precincts/blocks
     """
@@ -584,32 +592,19 @@ def merge_empty(graph, year):
     print(f"Nodes below population cutoff to merge: {len(empty_nodes)}")
     empty_graph = graph.subgraph(empty_nodes)
     empty_groups = list(nx.algorithms.connected_components(empty_graph))
-
     groups_to_add = []
-    groups_to_remove = []
     for group in empty_groups:
         subgraph = graph.subgraph(group).copy()
         remove = False
-        if year == "2010":
-            for edge in graph.subgraph(group).edges():
-                if graph.nodes[edge[0]]["COUNTYFP10"] != graph.nodes[edge[1]]["COUNTYFP10"]:
-                    remove = True
-                    subgraph.remove_edge(edge[0], edge[1])
-        else:
-            for edge in graph.subgraph(group).edges():
-                if graph.nodes[edge[0]]["COUNTYFP20"] != graph.nodes[edge[1]]["COUNTYFP20"]:
-                    remove = True
-                    subgraph.remove_edge(edge[0], edge[1])
+        for edge in graph.subgraph(group).edges():
+            if graph.nodes[edge[0]][county_key] != graph.nodes[edge[1]][county_key]:
+                remove = True
+                subgraph.remove_edge(edge[0], edge[1])
         groups_to_add += list(nx.algorithms.connected_components(subgraph))
-        if remove:
-            groups_to_remove.append(group)
-    for group in groups_to_remove:
-        empty_groups.remove(group)
-    for group in groups_to_add:
-        empty_groups.append(group)
 
-    print(graph.nodes["33007CAMB01"])
-    for group in empty_groups:
+    # print(graph.nodes["33007GRGT01"], "printed")
+
+    for group in groups_to_add:
         total_group_pop = 0
         total_group_votes = 0
         for node in group:
@@ -624,8 +619,14 @@ def merge_empty(graph, year):
                 for other_node in graph.neighbors(node):
                     bordering.add(other_node)
             bordering = bordering.difference(set(group))
+            substituted_node = None
+            for substitute_node in bordering:
+                if graph.nodes[substitute_node][county_key] == graph.nodes[node][county_key]:
+                    substituted_node = substitute_node
+                    break
+            if not substituted_node:
+                substituted_node = list(bordering)[0]
             # try:
-            substituted_node = list(bordering)[0]
             # except IndexError:
                 # return None
         geometry = [shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group]
@@ -1099,9 +1100,10 @@ def serialize_all():
 
 if __name__ == "__main__":
     # compress_all_data("final")
-    merge_graphs()
     # serialize_all()
+    # remove_merged_files()
     # serialize(2010, "california", checkpoint="integration")
     # serialize(2010, "colorado", checkpoint="beginning")
     # serialize(2010, "georgia", checkpoint="beginning")       
-    # serialize(2010, "north_carolina", checkpoint="beginning")
+    serialize(2010, "north_carolina", checkpoint="beginning")
+    merge_graphs()

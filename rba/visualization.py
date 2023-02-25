@@ -107,45 +107,95 @@ def modify_coords(coords, bounds):
     return new_coords
 
 
-def visualize_partition_geopandas(partition, *args, union=False, i=None, **kwargs):
+def visualize_gradient_geopandas(precincts, get_value, get_geometry, *args, img_path=None,
+                                 show=False, clear=True, **kwargs):
+    """Visualizes a variable on a gradient using geopandas.
+
+    Parameters
+    ----------
+    precincts : container of precincts
+        Contains a list of precinct names.
+    get_value : callable
+        Returns a metric value for a given precinct
+    get_geometry : callable
+        Returns the geometry (GeoJSON list form, not shapely) for a given precinct.
+    img_path : str, default=None
+        Optional path to save the image.
+    show : bool, default=False
+        Whether or not to call plt.show()
+    clear : bool, default=True
+        Whether or not to call plt.clf()
+    Also takes any parameters taken by geopandas.GeoDataFrame.plot()
+    """
+    gdf = geopandas.GeoDataFrame(columns=["val", "geometry"])
+    for precinct in precincts:
+        # gdf.loc[len(gdf.index)] = [get_value(precinct), shapely.geometry.shape(get_geometry(precinct))]
+        gdf.loc[len(gdf.index)] = [get_value(precinct), get_geometry(precinct)]
+    gdf.plot(
+        column="val",
+        *args,
+        **{key: arg for key, arg in kwargs.items() if key not in ["img_path", "show", "clear"]}
+    )
+    if img_path is not None:
+        plt.savefig(img_path)
+    if show:
+        plt.show()
+    if clear:
+        plt.clf()
+
+
+def visualize_partition_geopandas(partition, *args, graph=None, union=False, img_path=None,
+                                  show=False, clear=True, **kwargs):
     """Visualizes a gerrychain.Partition object using geopandas.
 
     Parameters
     ----------
     partition : gerrychain.Partition
         Partition to visualize.
-    union : boolean, default=False
+    graph : gerrychain.Graph, default=None
+        State precinct graph. Only needs to be provided if partition is a SimplePartition.
+    union : bool, default=False
         Whether or not to visualize the partitions as a single polygon, as opposed to just showing
         their assignment by coloring.
+    img_path : str, default=None
+        Optional path to save the image.
+    show : bool, default=False
+        Whether or not to call plt.show()
+    clear : bool, default=True
+        Whether or not to call plt.clf()
     Also takes any parameters taken by geopandas.GeoDataFrame.plot()
     """
+    if graph is None:
+        graph = partition.graph
+
     if union:
         data = {"assignment": [], "geometry": []}
 
         for part in partition.parts:
             data["assignment"].append(part)
-            geoms = [shapely.geometry.shape(partition.graph.nodes[node]["geometry"])
+            geoms = [shapely.geometry.shape(graph.nodes[node]["geometry"])
                      for node in partition.parts[part]]
             data["geometry"].append(shapely.ops.unary_union(geoms))
 
     else:
         data = {"assignment": [], "geometry": []}
-        for node in partition.graph:
+        for node in graph:
             data["assignment"].append(partition.assignment[node])
-            data["geometry"].append(shapely.geometry.shape(partition.graph.nodes[node]["geometry"]))
+            data["geometry"].append(shapely.geometry.shape(graph.nodes[node]["geometry"]))
 
     gdf = geopandas.GeoDataFrame(data)
     del data
     gdf.plot(
         column="assignment",
         *args,
-        **{key: arg for key, arg in kwargs.items() if key != "union"}
+        **{key: arg for key, arg in kwargs.items() if key not in ["union", "img_path", "show", "clear"]}
     )
-    if i:
-        plt.savefig(f"partition_plot_{i}.png")
-    else:
-        plt.savefig(f"partition_plot_initial.png")
-    plt.clf()
+    if img_path is not None:
+        plt.savefig(img_path)
+    if show:
+        plt.show()
+    if clear:
+        plt.clf()
 
 
 def visualize_map(graph, output_fpath, node_coords, edge_coords, node_colors=None, edge_colors=None,

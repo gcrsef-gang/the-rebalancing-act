@@ -12,8 +12,7 @@ import random
 import sys
 import warnings
 
-from gerrychain import Partition, Graph, MarkovChain, updaters, constraints, accept
-from gerrychain.constraints import Validator
+from gerrychain import Partition, Graph, updaters, constraints, accept
 from gerrychain.proposals import recom
 from gerrychain.tree import recursive_tree_part, bipartition_tree, uniform_spanning_tree
 import gerrychain.random
@@ -22,12 +21,13 @@ import pandas as pd
 
 from . import constants
 from .district_quantification import quantify_gerrymandering
+from .ensemble import RBAMarkovChain
 from .util import (get_num_vra_districts, load_districts, get_county_spanning_forest,
                    save_assignment, choose_cut)
 from .visualization import visualize_partition_geopandas
 
 
-class SimulatedAnnealingChain(MarkovChain):
+class SimulatedAnnealingChain(RBAMarkovChain):
     """Simulated annealing Markov Chain. Major changes to gerrychain.MarkovChain:
     - `get_temperature` is now the first positional argument, and it must take the current iteration 
        and return the current temperature.
@@ -44,21 +44,8 @@ class SimulatedAnnealingChain(MarkovChain):
         "linear": get_temperature_linear
     }
 
-    def __init__(self, get_temperature, proposal, constraints, accept, initial_state, total_steps):
-        try:
-            super().__init__(proposal, constraints, accept, initial_state, total_steps)
-        except ValueError as e:
-            if "initial_state" in repr(e):
-                warnings.warn("GerryChain error was ignored: " + repr(e))
-                # Initialize with no constraints.
-                super().__init__(proposal, [], accept, initial_state, total_steps)
-                if callable(constraints):
-                    self.is_valid = constraints
-                else:
-                    self.is_valid = Validator(constraints)
-            else:
-                raise e
-
+    def __init__(self, get_temperature, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.get_temperature = get_temperature
 
     def __iter__(self):
@@ -188,10 +175,10 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
     #     pop_target=ideal_population,
     #     epsilon=constants.POP_EQUALITY_THRESHOLD,
     #     node_repeats=2,
-    #     method=partial(
-    #         bipartition_tree,
-    #         spanning_tree_fn=get_county_spanning_forest,
-    #         choice=partial(choose_cut, graph=graph))
+        # method=partial(
+        #     bipartition_tree,
+        #     spanning_tree_fn=get_county_spanning_forest,
+        #     choice=partial(choose_cut, graph=graph))
     # )
 
     recom_proposal = partial(recom,
@@ -281,6 +268,7 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
              initial_plan_file, output_dir, verbose):
     """Wrapper function for command-line usage.
     """
+    # NOTE: does not create reproducibility.
     gerrychain.random.random.seed(2023)
     random.seed(2023)
 
@@ -309,7 +297,7 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
 
     if verbose:
         print("done!")
-        print("VRA requirements...", end="")
+        print("Loading VRA requirements...", end="")
         sys.stdout.flush()
 
     with open(vra_config_file, "r") as f:

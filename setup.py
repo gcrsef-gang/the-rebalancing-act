@@ -16,6 +16,7 @@ setup(
         "matplotlib==3.5.1", 
         "pandas==1.4.1",
         "gerrychain==0.2.20",
-        "maup==1.0.8"
+        "maup==1.0.8",
+        "welford==0.2.5"
     ]
 )

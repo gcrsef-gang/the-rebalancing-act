@@ -3,6 +3,7 @@
 
 import json
 import random
+import os
 import time
 
 from collections import defaultdict
@@ -19,6 +20,15 @@ import maup
 from . import constants
 from . import visualization
 # from .district_quantification import quantify_gerrymandering
+
+
+def create_folder(path):
+    """Creates a folder but does not throw an exception if it already exists.
+    """
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        pass
 
 
 def copy_adjacency(graph):

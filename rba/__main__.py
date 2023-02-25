@@ -56,7 +56,11 @@ if __name__ == "__main__":
     ensemble_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
     ensemble_parser.add_argument("--community_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
     ensemble_parser.add_argument("--vra_config_file", type=str, default=os.path.join(package_dir, "data/2010/vra_nh.json"))
+    ensemble_parser.add_argument("--num_steps", type=int, default=100)
+    ensemble_parser.add_argument("--num_districts", type=int, default=2)
+    ensemble_parser.add_argument("--initial_plan_file", type=str, default=None)
     ensemble_parser.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
+    ensemble_parser.add_argument("-o", "--output_dir", type=str)
     ensemble_parser.set_defaults(func=rba.ensemble.ensemble_analysis)
 
     optimize_parser = subparsers.add_parser("optimize")

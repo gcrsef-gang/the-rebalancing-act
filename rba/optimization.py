@@ -213,6 +213,7 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
 
     chain = SimulatedAnnealingChain(
         get_temperature=partial(
+            SimulatedAnnealingChain.get_temperature_linear,
             SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
             num_steps=num_steps),
         # proposal=county_recom_proposal,

@@ -15,6 +15,7 @@ import fiona
 import pandas as pd
 import geopandas as gpd
 from pyproj import CRS
+import copy
 
 import maup
 import networkx as nx
@@ -70,6 +71,7 @@ def remove_merged_files():
         for file in os.listdir(final_dir+"/"+year):
             if "merged" in file:
                 os.remove(final_dir + "/" + year + "/" + file)
+
 def merge_graphs():
     """
     This function automatically decompresses, merges empty precincts/blocks, and then recompresses.
@@ -100,6 +102,9 @@ def merge_graphs():
                 data = json.load(f)
             graph = nx.readwrite.adjacency_graph(data)
             print(f"Total number of nodes: {len(graph.nodes)}")
+            if year == "2010" and "kentucky_geodata" in file:
+                for node in graph.nodes():
+                    graph.nodes[node]["COUNTYFP10"] = 1
             # counties = defaultdict(list)
             # for node in graph.nodes:
                 # if year == 2010:
@@ -113,6 +118,8 @@ def merge_graphs():
                 # full_merged_graph = nx.compose(merged_subgraph)
             if year == "2010":
                 merged_graph = merge_empty(graph, "COUNTYFP10")
+            elif year == "2020" and "maine_geodata" in file:
+                merged_graph = merge_empty(graph, "COUNTY20")
             else:
                 merged_graph = merge_empty(graph, "COUNTYFP20")
             if merged_graph == None:
@@ -594,31 +601,50 @@ def merge_empty(graph, county_key):
     empty_groups = list(nx.algorithms.connected_components(empty_graph))
     groups_to_add = []
     for group in empty_groups:
-        subgraph = graph.subgraph(group).copy()
+        subgraph = nx.Graph(graph.subgraph(group))
+        edges = []
         remove = False
         for edge in graph.subgraph(group).edges():
             if graph.nodes[edge[0]][county_key] != graph.nodes[edge[1]][county_key]:
                 remove = True
+                # if edge[0] == "021500001002006" and edge[1] == "021220012001219":
+                    # print("edge removed!")
+                # if edge[1] == "021500001002006" and edge[0] == "021220012001219":
+                    # print("edge removed!")
                 subgraph.remove_edge(edge[0], edge[1])
-        groups_to_add += list(nx.algorithms.connected_components(subgraph))
+                edges.append((edge[0], edge[1]))
+        connnected_components = list(nx.algorithms.connected_components(subgraph))
+        groups_to_add += connnected_components
+        # print(graph["021220012001219"]["021500001002006"])
+        for u,v in edges:
+            graph.add_edge(u, v)
+        # print(list(graph.neighbors("021500001002006")))
+        # print(len(group), [len(c) for c in connnected_components])
 
     # print(graph.nodes["33007GRGT01"], "printed")
 
+    # print(list(graph.neighbors("021500001002006")), "right before!")
     for group in groups_to_add:
+        # print(list(graph.neighbors("021500001002006")), "start")
         total_group_pop = 0
         total_group_votes = 0
         for node in group:
             if str(graph.nodes[node]["total_pop"]) != "nan":
                 total_group_pop += graph.nodes[node]["total_pop"]
                 total_group_votes += graph.nodes[node]["total_votes"]
+        bordering = set()
+        for node in group: 
+            # if node == "021500001002006":
+                # print(list(graph.neighbors(node)), "used in group")
+            for other_node in graph.neighbors(node):
+                bordering.add(other_node)
+        # print(bordering, "after adding")
+        bordering = bordering.difference(set(group))
+        # print(bordering, "after difference")
         if total_group_votes >= 10 and total_group_pop >= 20:
-            substituted_node = group[0]
+            substituted_node = list(group)[0]
+            group.remove(substituted_node)
         else:
-            bordering = set()
-            for node in group:
-                for other_node in graph.neighbors(node):
-                    bordering.add(other_node)
-            bordering = bordering.difference(set(group))
             substituted_node = None
             for substitute_node in bordering:
                 if graph.nodes[substitute_node][county_key] == graph.nodes[node][county_key]:
@@ -629,6 +655,8 @@ def merge_empty(graph, county_key):
             # try:
             # except IndexError:
                 # return None
+        # if substituted_node == "021500001002006":
+            # print("is substitute")
         geometry = [shapely.geometry.shape(graph.nodes[node]["geometry"]) for node in group]
         geometry.append(shapely.geometry.shape(graph.nodes[substituted_node]["geometry"]))
         geometry_union = shapely.ops.unary_union(geometry)
@@ -647,7 +675,18 @@ def merge_empty(graph, county_key):
             graph.nodes[substituted_node]["total_dem"] += graph.nodes[node]["total_dem"]
             graph.nodes[substituted_node]["total_rep"] += graph.nodes[node]["total_rep"]
         graph.nodes[substituted_node]["geometry"] = shapely.geometry.mapping(geometry_union)
-        graph.add_edges_from([(substituted_node, border_node) for border_node in bordering if border_node != substituted_node])
+        substitute_edges = [(substituted_node, border_node) for border_node in bordering if border_node != substituted_node]
+        for edge in substitute_edges:
+            graph.add_edge(edge[0], edge[1])
+            # if edge[0] == "021500001002006" or edge[1] == "021500001002006":
+                # print(edge, "edge added!")
+                # print(list(graph.neighbors("021500001002006")))
+        # graph.add_edges_from([(substituted_node, border_node) for border_node in bordering if border_node != substituted_node])
+        # if "021220012001219" in group:
+            # print(graph.edges[('021220003001331', '021500001002006')])
+            # print(list(graph.neighbors("021500001002006")))
+            # print("THING REMOED!!")
+            # print([(substituted_node, border_node) for border_node in bordering if border_node != substituted_node])
         graph.remove_nodes_from(group)
     # Split multipolygons which are smaller than a block
     print(f"{len(fake_nodes)} Fake split multipolygons removed!")
@@ -1051,8 +1090,12 @@ def serialize(year, state, checkpoint="beginning"):
         json.dump(block_data, f)
 
     # Create a version with merged precincts/blocks under a certain threshold
-    merged_geodata_graph = merge_empty(connected_geodata_graph)
-    merged_block_geodata_graph = merge_empty(connected_block_geodata_graph)
+    if year == 2010:
+        merged_geodata_graph = merge_empty(connected_geodata_graph, "COUNTYFP10")
+        merged_block_geodata_graph = merge_empty(connected_block_geodata_graph, "COUNTYFP10")
+    else:
+        merged_geodata_graph = merge_empty(connected_geodata_graph, "COUNTYFP20")
+        merged_block_geodata_graph = merge_empty(connected_block_geodata_graph, "COUNTYFP20")
     data = nx.readwrite.json_graph.adjacency_data(merged_geodata_graph)
     block_data = nx.readwrite.json_graph.adjacency_data(merged_block_geodata_graph)
 
@@ -1105,5 +1148,5 @@ if __name__ == "__main__":
     # serialize(2010, "california", checkpoint="integration")
     # serialize(2010, "colorado", checkpoint="beginning")
     # serialize(2010, "georgia", checkpoint="beginning")       
-    serialize(2010, "north_carolina", checkpoint="beginning")
+    # serialize(2010, "north_carolina", checkpoint="beginning")
     merge_graphs()

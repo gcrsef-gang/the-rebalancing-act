@@ -446,6 +446,9 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
         for district, node_list in districts.items():
             for node in node_list:
                 graph.nodes[node]["partition"] = district
+    else:
+        for node in graph.nodes:
+            graph.nodes[node]["partition"] = 1
     print("Partition data integrated!")
 
     # Replay supercommunity algorithm

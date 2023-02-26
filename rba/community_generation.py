@@ -9,6 +9,7 @@ import math
 
 import networkx as nx
 import numpy as np
+import shapely
 from gerrychain import Graph
 from scipy.spatial import distance
 import matplotlib.pyplot as plt
@@ -36,7 +37,15 @@ def compute_precinct_similarities(graph, verbose=False):
         if data["total_pop"] == 0:
             population_density = 0
         else:
-            population_density = math.log(data["total_pop"]/data["ALAND10"])
+            # population_density = math.log(data["total_pop"]/data["ALAND10"])
+            # print(data["geometry"]["coordinates"])
+            if isinstance(data["geometry"]["coordinates"][0][0][0], float):
+                geometry = shapely.geometry.Polygon(data["geometry"]["coordinates"][0])
+            else:
+                geomlist = [shapely.geometry.Polygon(data["geometry"]["coordinates"][i][0]) for i in range(len(data["geometry"]["coordinates"]))]
+                geometry = shapely.ops.unary_union(geomlist)
+            # print(geometry.type)
+            population_density = math.log(data["total_pop"]/geometry.area)
         min_pop_density = min(min_pop_density, population_density)
         max_pop_density = max(max_pop_density, population_density)
         population_densities[node] = population_density

@@ -21,6 +21,7 @@ Use -v or --verbose for verbosity.
 
 import argparse
 import os
+import json
 
 import rba
 
@@ -50,7 +51,7 @@ if __name__ == "__main__":
     draw_parser.add_argument("--state", type=str, default="new_hampshire")
     draw_parser.add_argument("--output_file", type=str)
    #  draw_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
-    draw_parser.add_argument("--edge_lifetime_file", type=str, default=None)
+    # draw_parser.add_argument("--edge_lifetime_file", type=str, default=None)
     draw_parser.add_argument("--num_frames", type=int, default=50)
     draw_parser.add_argument("--partition_file", type=str, default=None)
     draw_parser.set_defaults(func=rba.visualization.visualize)
@@ -84,12 +85,13 @@ if __name__ == "__main__":
     if args.func.__name__ == "create_communities":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["output_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
-    elif args.func.__name__ == "quantify_districtss":
+    elif args.func.__name__ == "quantify_districts":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["community_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
         arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
     elif args.func.__name__ == "visualize":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
+        arguments["edge_lifetime_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
     elif args.func.__name__ == "ensemble_analysis":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["community_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
@@ -97,7 +99,10 @@ if __name__ == "__main__":
         arguments["vra_config_file"] = os.path.join(package_dir, f"data/2010/vra_{state}.json")
     elif args.func.__name__ == "optimize":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
-        arguments["community_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
+        # with open(os.path.join(package_dir, f"data/2010/{state}_communities.json"), "r") as f:
+            # community_data = json.load(f)
+        arguments["communitygen_out_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
+        # arguments["communitygen_out_file"] = community_data
         arguments["vra_config_file"] = os.path.join(package_dir, f"data/2010/vra_{state}.json")
    #  if arguments["func"] 
    #  args.func(**{key: val for key, val in vars(args).items() if key != "func"})

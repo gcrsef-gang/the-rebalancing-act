@@ -1,0 +1,9 @@
+{
+    "black": 2,
+    "hispanic": 2,
+    "asian": 0,
+    "native": 0,
+    "islander": 0,
+    "combined": 9,
+    "opportunity_threshold": 0.5
+}

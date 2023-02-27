@@ -64,6 +64,7 @@ if __name__ == "__main__":
     ensemble_parser.add_argument("--num_steps", type=int, default=100)
     ensemble_parser.add_argument("--num_districts", type=int, default=2)
     ensemble_parser.add_argument("--initial_plan_file", type=str, default=None)
+    # ensemble_parser.add_argument("--optimize", type=True, default=None)
    #  ensemble_parser.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
     ensemble_parser.add_argument("-o", "--output_dir", type=str)
     ensemble_parser.set_defaults(func=rba.ensemble.ensemble_analysis)

@@ -18,6 +18,7 @@ import numpy as np
 import random
 import gerrychain
 import matplotlib.pyplot as plt
+from pyproj import CRS
 
 from . import community_generation
 from . import util
@@ -128,9 +129,11 @@ def visualize_gradient_geopandas(precincts, get_value, get_geometry, *args, img_
     Also takes any parameters taken by geopandas.GeoDataFrame.plot()
     """
     gdf = geopandas.GeoDataFrame(columns=["val", "geometry"])
+    gdf.set_geometry("geometry", inplace=True)
+    gdf.set_crs(CRS('esri:102008'), allow_override=True, inplace=True) 
     for precinct in precincts:
-        # gdf.loc[len(gdf.index)] = [get_value(precinct), shapely.geometry.shape(get_geometry(precinct))]
-        gdf.loc[len(gdf.index)] = [get_value(precinct), get_geometry(precinct)]
+        gdf.loc[len(gdf.index)] = [get_value(precinct), shapely.geometry.shape(get_geometry(precinct))]
+        # gdf.loc[len(gdf.index)] = [get_value(precinct), get_geometry(precinct)]
     gdf.plot(
         column="val",
         *args,

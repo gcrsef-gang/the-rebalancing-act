@@ -405,6 +405,11 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
     for edge, lifetime in supercommunity_output.items():
         u = edge.split(",")[0][2:-1]
         v = edge.split(",")[1][2:-2]
+        # print(edge, (u, v), type(u), type(v))
+        if u == '19001001022' and v =='19001001021':
+            print("DETECTED", type((u,v)), (u,v))
+        if ((u,v) == ('19001001022', '19001001021')):
+            print("should be added!")
         differences[frozenset((u, v))] = lifetime
     print("Done!")
 
@@ -433,10 +438,9 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
     # unrendered_contractions = [frozenset(supercommunity_output[e]) for e in graph.edges]  # Not a set because order must be preserved.
     unrendered_contractions = []  # Not a set because order must be preserved.
     for edge in graph.edges:
-        try:
-            unrendered_contractions.append(tuple(supercommunity_output[edge]))
-        except:
-            unrendered_contractions.append(tuple(supercommunity_output[(edge[1],edge[0])]))
+        # print(edge[0], edge[1], differences[edge], "edge")
+        unrendered_contractions.append((edge[0], edge[1], differences[frozenset(edge)]))
+    unrendered_contractions = sorted(unrendered_contractions, key=lambda x: x[2])
     community_graph = util.copy_adjacency(graph)
     for edge in community_graph.edges:
         community_graph.edges[edge]["constituent_edges"] = {edge}
@@ -477,11 +481,19 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
 
         this_iter_contractions = set()
         for c1, c2, time in unrendered_contractions:
+            # if (c1, c2, time) in this_iter_contractions:
+            #     continue
+            # if (c2, c1, time) in this_iter_contractions:
+            #     continue
             if time < t:
+                # for neighbor in community_graph.neighbors(c2):
+                # this_iter_contractions.add((neighbor, c2, differences[frozenset((neighbor, c2))]))
                 # Update graph
+                print(c1, c2, time, this_iter_contractions)
                 for neighbor in community_graph[c2]:
                     if neighbor == c1:
                         continue
+                    # this_iter_contractions.add((neighbor, c2, differences[frozenset((neighbor, c2))]))
                     if neighbor in community_graph[c1]:
                         c_edges = community_graph.edges[c1, neighbor]["constituent_edges"].union(community_graph.edges[c2, neighbor]["constituent_edges"])
                     else:

@@ -86,7 +86,7 @@ def sa_accept_proposal(current_state, proposed_next_state, temperature):
     """
     current_energy = current_state["gerry_scores"][1]
     proposed_energy = proposed_next_state["gerry_scores"][1]
-    if (current_energy < proposed_energy or random.random() < temperature):
+    if (current_energy > proposed_energy or random.random() < temperature):
         return True
     return False
 
@@ -271,11 +271,11 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
     """Wrapper function for command-line usage.
     """
     # NOTE: does not create reproducibility.
-    seed = time.time()
-    if verbose:
-        print(f"Setting seed to {seed}")
-    gerrychain.random.random.seed(seed)
-    random.seed(seed)
+    # seed = time.tsime()
+    # if verbose:
+        # print(f"Setting seed to {seed}")
+    # gerrychain.random.random.seed(seed)
+    # random.seed(seed)
 
     if verbose:
         print("Loading precinct graph...", end="")
@@ -346,7 +346,9 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
 
     # Save districts in order of decreasing goodness.
     for i, partition in enumerate(sorted(plans, key=lambda p: p["gerry_scores"][1], reverse=True)):
-        save_assignment(partition, os.path.join(output_dir, f"Plan_{i + 1}.json"))
+        with open(os.path.join(output_dir, f"Plan_{i + 1}.json"), "w+") as f:
+            # json.dump(partition.parts, f)
+            save_assignment(partition, os.path.join(output_dir, f"Plan_{i + 1}.json"))
     
     df.to_csv(os.path.join(output_dir, "optimization_stats.csv"))
 

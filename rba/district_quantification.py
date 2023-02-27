@@ -17,6 +17,7 @@ def quantify_gerrymandering(state_graph, districts, difference_scores, verbose=F
     Given a dictionary of districts to node lists/a state graph as well as dictionary of community boundary lifespan, calculates
     gerrymandering scores for each district and the state.
     """
+    # print("gerrymandering being quantified!")
     # Two lookups 
     crossdistrict_edges = {district : [] for district in districts}
     for district, graph in districts.items():
@@ -34,6 +35,7 @@ def quantify_gerrymandering(state_graph, districts, difference_scores, verbose=F
     district_gerrymanderings = {}
     # num_crossedges = sum([len(edge_list) for edge_list in crossdistrict_edges.values()])
     for district, node_list in districts.items():
+        # print(district, "district being quantified!")
         district_gerrymandering = 0
         # for edge in district_graph.edges():
         for node1 in node_list:

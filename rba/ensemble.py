@@ -64,13 +64,13 @@ class SimplePartition:
 
 
 # UPDATERS
-def create_updaters(edge_lifetimes, vra_config, vra_threshold):
+def create_updaters(differences, vra_config, vra_threshold):
     rba_updaters = {
         "population": updaters.Tally("total_pop", alias="population"),
         "gerry_scores": lambda partition: quantify_gerrymandering(
             partition.graph,
             {dist: subgraph for dist, subgraph in partition.subgraphs.items()},
-            edge_lifetimes
+            differences
         )
     }
 
@@ -105,7 +105,7 @@ def create_constraints(initial_partition, vra_config):
     return all_constraints
 
 
-def generate_ensemble(graph, edge_lifetimes, num_vra_districts, vra_threshold,
+def generate_ensemble(graph, differences, num_vra_districts, vra_threshold,
                       pop_equality_threshold, num_steps, num_districts, initial_assignment=None,
                       output_dir=None, verbose=False):
     """Conduct the ensemble analysis for a state. Data is returned, but all partitions are saved
@@ -115,7 +115,7 @@ def generate_ensemble(graph, edge_lifetimes, num_vra_districts, vra_threshold,
     ----------
     graph : gerrychain.Graph
         The state graph of precincts.
-    edge_lifetimes : dict
+    differences : dict
         Maps edges (tuples of precinct IDs)
     num_vra_districts : dict
         Maps the name of each minority to the minimum number of VRA districts required for it.
@@ -145,7 +145,7 @@ def generate_ensemble(graph, edge_lifetimes, num_vra_districts, vra_threshold,
         Contains gerrymandering scores of the state and all the districts for each step in the
         Markov Chain.
     """
-    rba_updaters = create_updaters(edge_lifetimes, num_vra_districts, vra_threshold)
+    rba_updaters = create_updaters(differences, num_vra_districts, vra_threshold)
 
     state_population = 0
     for node in graph:
@@ -225,15 +225,16 @@ def generate_ensemble(graph, edge_lifetimes, num_vra_districts, vra_threshold,
     return scores_df
 
 
-def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, num_districts,
+def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,
                       initial_plan_file, district_file, output_dir, verbose=False):
     """Conducts a geographic ensemble analysis of a state's gerrymandering.
     """
-    seed = time.time()
-    if verbose:
-        print(f"Setting seed to {seed}")
-    gerrychain.random.random.seed(seed)
-    random.seed(seed)
+    # seed = time.time()
+    # seed = random.randint(0, 1e6)
+    # if verbose:
+        # print(f"Setting seed to {seed}")
+    # gerrychain.random.random.seed(seed)
+    # random.seed(seed)
 
     if verbose:
         print("Loading precinct graph...", end="")
@@ -250,14 +251,14 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
         print("Loading community algorithm output...", end="")
         sys.stdout.flush()
 
-    with open(community_file, "r") as f:
-        community_data = json.load(f)
+    with open(difference_file, "r") as f:
+        difference_data = json.load(f)
 
-    edge_lifetimes = {}
-    for edge, lifetime in community_data["edge_lifetimes"].items():
+    differences = {}
+    for edge, lifetime in difference_data.items():
         u = edge.split(",")[0][2:-1]
         v = edge.split(",")[1][2:-2]
-        edge_lifetimes[(u, v)] = lifetime
+        differences[(u, v)] = lifetime
 
     if verbose:
         print("done!")
@@ -290,7 +291,7 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
             print("No starting map provided. Will generate a random one later.")
         initial_assignment = None
 
-    scores_df = generate_ensemble(graph, edge_lifetimes, vra_config, vra_threshold,
+    scores_df = generate_ensemble(graph, differences, vra_config, vra_threshold,
                                   constants.POP_EQUALITY_THRESHOLD, num_steps, num_districts,
                                   initial_assignment, output_dir, verbose)
 
@@ -358,7 +359,7 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
 
     districts_precinct_df = pd.DataFrame(columns=["score", "homogeneity"], index=sorted_node_names)
     district_node_sets = load_districts(graph, district_file, verbose)
-    district_scores, state_score = quantify_gerrymandering(graph, district_node_sets, edge_lifetimes, verbose)
+    district_scores, state_score = quantify_gerrymandering(graph, district_node_sets, differences, verbose)
     for district, precincts in district_node_sets.items():
         homogeneity = statistics.stdev(
             [graph.nodes[node]["total_rep"] / graph.nodes[node]["total_votes"]

@@ -379,7 +379,7 @@ def get_coords(graph):
 
     return node_coords, edge_coords, overall_border
 
-def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num_frames, partition=None):
+def visualize_community_generation(difference_fpath, output_fpath, graph, num_frames, partition=None):
     """Writes frames for an animated visual of the community generation algorithm to a folder.
     The animation depicts borders between communities as black and borders between precints as gray.
     It also uses edge width as an indicator of similarity, and color as an indicator of
@@ -387,7 +387,7 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
     
     Parameters
     ----------
-    edge_lifetime_fpath : str
+    difference_fpath : str
         Path to JSON file containing edge lifetimes (communitygen ouptut).
     output_fpath : str
         Path to directory where frames will be stored as PNG (will be created if necessary).
@@ -398,20 +398,20 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
     """
     print("Loading supercommunity output data... ", end="")
     sys.stdout.flush()
-    with open(edge_lifetime_fpath, "r") as f:
+    with open(difference_fpath, "r") as f:
         supercommunity_output = json.load(f)  # Contains strings as keys.
 
-    edge_lifetimes = {}
-    for edge, lifetime in supercommunity_output["edge_lifetimes"].items():
+    differences = {}
+    for edge, lifetime in supercommunity_output.items():
         u = edge.split(",")[0][2:-1]
         v = edge.split(",")[1][2:-2]
-        edge_lifetimes[frozenset((u, v))] = lifetime
+        differences[frozenset((u, v))] = lifetime
     print("Done!")
 
-    max_lt = max(edge_lifetimes.values())
-    min_lt = min(edge_lifetimes.values())
+    max_lt = max(differences.values())
+    min_lt = min(differences.values())
     edge_widths = {
-        edge: int((lt - min_lt) / max_lt * EDGE_WIDTH_FACTOR) + 1 for edge, lt in edge_lifetimes.items()
+        edge: int((lt - min_lt) / max_lt * EDGE_WIDTH_FACTOR) + 1 for edge, lt in differences.items()
     }
 
     # node_colors = {
@@ -430,7 +430,13 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
 
 
     living_edges = set(frozenset(e) for e in graph.edges)
-    unrendered_contractions = [tuple(c) for c in supercommunity_output["contractions"]]  # Not a set because order must be preserved.
+    # unrendered_contractions = [frozenset(supercommunity_output[e]) for e in graph.edges]  # Not a set because order must be preserved.
+    unrendered_contractions = []  # Not a set because order must be preserved.
+    for edge in graph.edges:
+        try:
+            unrendered_contractions.append(tuple(supercommunity_output[edge]))
+        except:
+            unrendered_contractions.append(tuple(supercommunity_output[(edge[1],edge[0])]))
     community_graph = util.copy_adjacency(graph)
     for edge in community_graph.edges:
         community_graph.edges[edge]["constituent_edges"] = {edge}
@@ -458,7 +464,7 @@ def visualize_community_generation(edge_lifetime_fpath, output_fpath, graph, num
         t = (f - 1) / (num_frames - 1)
         edge_colors = {}
         for u, v in living_edges:
-            if edge_lifetimes[frozenset((u, v))] < t:
+            if differences[frozenset((u, v))] < t:
                 if graph.nodes[u]["partition"] != graph.nodes[v]["partition"]:
                     edge_colors[frozenset((u, v))] = (156, 156, 255)
                 else:
@@ -646,12 +652,12 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, n
         graph_image.show()
 
 
-def visualize(output_file, graph_file, edge_lifetime_file, num_frames, partition_file, verbose):
+def visualize(output_file, graph_file, difference_file, num_frames, partition_file, verbose):
     """General visualization function (figures out what to do based on inputs).
 
     TODO: right now this only works for supercommunity animations.
     """
-    if edge_lifetime_file is None:
+    if difference_file is None:
         raise NotImplementedError("rba draw only supports supercommunity animations at the moment")
     
     with open(graph_file, "r") as f:
@@ -659,10 +665,10 @@ def visualize(output_file, graph_file, edge_lifetime_file, num_frames, partition
     geodata = nx.readwrite.json_graph.adjacency_graph(data)
     community_generation.compute_precinct_similarities(geodata)
 
-    visualize_community_generation(edge_lifetime_file, output_file, geodata, num_frames, partition_file)
+    visualize_community_generation(difference_file, output_file, geodata, num_frames, partition_file)
 
-# def graph_edge_lifetime_distribution(edge_lifetime_path):
-#     with open(edge_lifetime_path, "r") as f:
+# def graph_difference_distribution(difference_path):
+#     with open(difference_path, "r") as f:
 #         supercommunity_output = json.load(f)
 
 if __name__ == "__main__":

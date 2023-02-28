@@ -441,6 +441,8 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         for precinct in precincts:
             districts_precinct_df.loc[precinct] = [district_scores[district], homogeneity]
 
+    if optimize_vis:
+        output_dir = vis_dir
     # Save a histogram of statewide scores.
     plt.hist(scores_df["state_gerry_score"], bins=30)
     plt.axvline(scores_df["state_gerry_score"].mean(), color='k', linestyle='dashed', linewidth=1)
@@ -463,8 +465,6 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     districts_partition = Partition(graph, assignment=districts_assignment)
 
     # TODO: this doesn't work with Maryland for some reason
-    if optimize_vis:
-        output_dir = vis_dir
     _, ax = plt.subplots(figsize=(12.8, 9.6))
     visualize_gradient_geopandas(
         sorted_node_names,

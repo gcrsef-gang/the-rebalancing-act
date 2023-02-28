@@ -90,6 +90,7 @@ if __name__ == "__main__":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
         arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
+        # arguments["district_file"] = os.path.join(package_dir, f"../{state}_optimize_10000/Plan_1.json")
     elif args.func.__name__ == "visualize":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")

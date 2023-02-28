@@ -77,7 +77,9 @@ def quantify_districts(graph_file, district_file, difference_file, verbose=False
     with open(graph_file, "r") as f:
         graph_json = json.load(f)
     graph = nx.readwrite.json_graph.adjacency_graph(graph_json)
-    districts = load_districts(graph, district_file)
+    # districts = load_districts(graph, district_file)
+    with open(district_file, "r") as f:
+        districts = json.load(f)
 
     with open(difference_file, "r") as f:
         supercommunity_output = json.load(f)  # Contains strings as keys.

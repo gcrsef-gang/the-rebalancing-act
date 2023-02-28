@@ -12,6 +12,7 @@ import pickle
 import random
 import sys
 import statistics
+import time
 import warnings
 
 from gerrychain import Partition, Graph, MarkovChain, updaters, constraints, accept
@@ -167,33 +168,33 @@ def generate_ensemble(graph, edge_lifetimes, num_vra_districts, vra_threshold,
 
     visualize_partition_geopandas(initial_partition)
 
-    weighted_recom_proposal = partial(
-        recom,
-        pop_col="total_pop",
-        pop_target=ideal_population,
-        epsilon=pop_equality_threshold,
-        node_repeats=6,
-        # method=partial(
-        #     bipartition_tree,
-        #     spanning_tree_fn=get_county_weighted_random_spanning_tree)
-        method=partial(
-            bipartition_tree,
-            spanning_tree_fn=get_county_spanning_forest,
-            choice=partial(choose_cut, graph=graph))
-    )
-
-    # recom_proposal = partial(recom,
+    # weighted_recom_proposal = partial(
+    #     recom,
     #     pop_col="total_pop",
     #     pop_target=ideal_population,
     #     epsilon=pop_equality_threshold,
-    #     node_repeats=2
+    #     node_repeats=6,
+    #     # method=partial(
+    #     #     bipartition_tree,
+    #     #     spanning_tree_fn=get_county_weighted_random_spanning_tree)
+    #     method=partial(
+    #         bipartition_tree,
+    #         spanning_tree_fn=get_county_spanning_forest,
+    #         choice=partial(choose_cut, graph=graph))
     # )
+
+    recom_proposal = partial(recom,
+        pop_col="total_pop",
+        pop_target=ideal_population,
+        epsilon=pop_equality_threshold,
+        node_repeats=2
+    )
 
     all_constraints = create_constraints(initial_partition, num_vra_districts)
 
     chain = RBAMarkovChain(
-        # proposal=recom_proposal,
-        proposal=weighted_recom_proposal,
+        proposal=recom_proposal,
+        # proposal=weighted_recom_proposal,
         constraints=all_constraints,
         # accept=lambda p: random.random() < get_county_border_proportion(p),
         accept=accept.always_accept,
@@ -228,9 +229,11 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
                       initial_plan_file, district_file, output_dir, verbose=False):
     """Conducts a geographic ensemble analysis of a state's gerrymandering.
     """
-    # NOTE: does not create reproducibility.
-    gerrychain.random.random.seed(2023)
-    random.seed(2023)
+    seed = time.time()
+    if verbose:
+        print(f"Setting seed to {seed}")
+    gerrychain.random.random.seed(seed)
+    random.seed(seed)
 
     if verbose:
         print("Loading precinct graph...", end="")

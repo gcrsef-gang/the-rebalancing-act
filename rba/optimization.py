@@ -10,6 +10,7 @@ import json
 import os
 import random
 import sys
+import time
 import warnings
 
 from gerrychain import Partition, Graph, updaters, constraints, accept
@@ -186,10 +187,10 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
         pop_target=ideal_population,
         epsilon=constants.POP_EQUALITY_THRESHOLD,
         node_repeats=2,
-        method=partial(
-            bipartition_tree,
-            spanning_tree_fn=lambda G: Graph(uniform_spanning_tree(G, lambda x: random.choice(tuple(x))))
-        )
+        # method=partial(
+        #     bipartition_tree,
+        #     spanning_tree_fn=lambda G: Graph(uniform_spanning_tree(G, lambda x: random.choice(tuple(x))))
+        # )
     )
 
     pop_constraint = constraints.within_percent_of_ideal_population(initial_partition,
@@ -213,7 +214,6 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
 
     chain = SimulatedAnnealingChain(
         get_temperature=partial(
-            SimulatedAnnealingChain.get_temperature_linear,
             SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
             num_steps=num_steps),
         # proposal=county_recom_proposal,
@@ -270,8 +270,11 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
     """Wrapper function for command-line usage.
     """
     # NOTE: does not create reproducibility.
-    gerrychain.random.random.seed(2023)
-    random.seed(2023)
+    seed = time.time()
+    if verbose:
+        print(f"Setting seed to {seed}")
+    gerrychain.random.random.seed(seed)
+    random.seed(seed)
 
     if verbose:
         print("Loading precinct graph...", end="")

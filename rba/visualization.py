@@ -22,8 +22,8 @@ import matplotlib.pyplot as plt
 from . import community_generation
 from . import util
 
-IMAGE_DIMS = (2000, 2000)
-# IMAGE_DIMS = (5000, 5000)
+# IMAGE_DIMS = (2000, 2000)
+IMAGE_DIMS = (5000, 5000)
 IMAGE_BG = "white"
 EDGE_WIDTH_FACTOR = 15
 

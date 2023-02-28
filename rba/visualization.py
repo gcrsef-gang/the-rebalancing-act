@@ -404,22 +404,18 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
     with open(difference_fpath, "r") as f:
         supercommunity_output = json.load(f)  # Contains strings as keys.
 
-    differences = {}
+    edge_lifetimes = {}
     for edge, lifetime in supercommunity_output.items():
         u = edge.split(",")[0][2:-1]
         v = edge.split(",")[1][2:-2]
-        # print(edge, (u, v), type(u), type(v))
-        if u == '19001001022' and v =='19001001021':
-            print("DETECTED", type((u,v)), (u,v))
-        if ((u,v) == ('19001001022', '19001001021')):
-            print("should be added!")
-        differences[frozenset((u, v))] = lifetime
+        if u in graph[v]:
+            edge_lifetimes[frozenset((u, v))] = lifetime
     print("Done!")
 
-    max_lt = max(differences.values())
-    min_lt = min(differences.values())
+    max_lt = max(edge_lifetimes.values())
+    min_lt = min(edge_lifetimes.values())
     edge_widths = {
-        edge: int((lt - min_lt) / max_lt * EDGE_WIDTH_FACTOR) + 1 for edge, lt in differences.items()
+        edge: int((lt - min_lt) / max_lt * EDGE_WIDTH_FACTOR) + 1 for edge, lt in edge_lifetimes.items()
     }
 
     # node_colors = {
@@ -437,12 +433,11 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
         pass
 
 
-    living_edges = set(frozenset(e) for e in graph.edges)
     # unrendered_contractions = [frozenset(supercommunity_output[e]) for e in graph.edges]  # Not a set because order must be preserved.
     unrendered_contractions = []  # Not a set because order must be preserved.
     for edge in graph.edges:
         # print(edge[0], edge[1], differences[edge], "edge")
-        unrendered_contractions.append((edge[0], edge[1], differences[frozenset(edge)]))
+        unrendered_contractions.append((edge[0], edge[1], edge_lifetimes[frozenset(edge)]))
     unrendered_contractions = sorted(unrendered_contractions, key=lambda x: x[2])
     community_graph = util.copy_adjacency(graph)
     for edge in community_graph.edges:
@@ -470,8 +465,8 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
         sys.stdout.flush()
         t = (f - 1) / (num_frames - 1)
         edge_colors = {}
-        for u, v in living_edges:
-            if differences[frozenset((u, v))] < t:
+        for u, v in graph.edges:
+            if edge_lifetimes[frozenset((u, v))] < t:
                 if graph.nodes[u]["partition"] != graph.nodes[v]["partition"]:
                     edge_colors[frozenset((u, v))] = (156, 156, 255)
                 else:
@@ -483,16 +478,33 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
                     edge_colors[frozenset((u, v))] = (0, 0, 0)
 
         this_iter_contractions = set()
-        for c1, c2, time in unrendered_contractions:
+        for u, v, time in unrendered_contractions:
             # if (c1, c2, time) in this_iter_contractions:
             #     continue
             # if (c2, c1, time) in this_iter_contractions:
             #     continue
             if time < t:
+                this_iter_contractions.add((u, v, time))
+
+                c1 = None
+                c2 = None
+                skip = False
+                for community in community_graph.nodes:
+                    if u in community_graph.nodes[community]["constituent_nodes"]:
+                        if v in community_graph.nodes[community]["constituent_nodes"]:
+                            skip = True
+                        else:
+                            c1 = community
+                            for second_community in community_graph.nodes:
+                                if v in community_graph.nodes[second_community]["constituent_nodes"]:
+                                    c2 = second_community
+                        break
+                if skip:
+                    continue
+
                 # for neighbor in community_graph.neighbors(c2):
                 # this_iter_contractions.add((neighbor, c2, differences[frozenset((neighbor, c2))]))
                 # Update graph
-                print(c1, c2, time, this_iter_contractions)
                 for neighbor in community_graph[c2]:
                     if neighbor == c1:
                         continue
@@ -519,7 +531,6 @@ def visualize_community_generation(difference_fpath, output_fpath, graph, num_fr
                     # node_colors[node] = get_partisanship_color(total_rep / total_votes)
 
                 # Delete c2
-                this_iter_contractions.add((c1, c2, time))
                 community_graph.remove_node(c2)
                 # del node_coords[c2]
                 # del node_colors[c2]
@@ -641,7 +652,7 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, n
         draw.line(
             centers,
             fill=edge_color,
-            width=1
+            width=5
     )
 
     print("Edges drawn")

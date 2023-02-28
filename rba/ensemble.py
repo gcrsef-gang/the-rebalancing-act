@@ -212,18 +212,17 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
         node_repeats=2
     )
 
-    all_constraints = create_constraints(initial_partition, num_vra_districts)
-
+    restarted = False
     while True:
         try:
 
-            seed = int(time.time()) % 10000000
+            seed = int(time.time()) % 1000
             if verbose:
                 print(f"Setting seed to {seed}")
             gerrychain.random.random.seed(seed)
             random.seed(seed)
 
-            if initial_assignment is None:
+            if initial_assignment is None or restarted:
                 if verbose:
                     print("Creating random initial partition...", end="")
                     sys.stdout.flush()
@@ -236,6 +235,8 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
                     print("done!")
 
             initial_partition = Partition(graph, initial_assignment, rba_updaters)
+
+            all_constraints = create_constraints(initial_partition, num_vra_districts)
 
             chain = RBAMarkovChain(
                 proposal=recom_proposal,
@@ -271,6 +272,7 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
 
         except TimeoutError:
             print("This initial partition wasn't going anywhere... trying a new one...")
+            restarted = True
 
     return scores_df
 

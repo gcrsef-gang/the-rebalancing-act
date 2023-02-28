@@ -15,5 +15,6 @@ TODO
 
 examples/.ipynb_checkpoints
 examples/*out
+NC_ensemble_10000
 
 debug.py

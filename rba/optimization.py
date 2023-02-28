@@ -84,7 +84,7 @@ def sa_accept_proposal(current_state, proposed_next_state, temperature):
     """
     current_energy = current_state["gerry_scores"][1]
     proposed_energy = proposed_next_state["gerry_scores"][1]
-    if (current_energy < proposed_energy or random.random() < temperature):
+    if (current_energy > proposed_energy or random.random() < temperature):
         return True
     return False
 
@@ -175,15 +175,16 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
         # )
     )
 
+    restarted = False
     while True:
         try:
-            seed = int(time.time()) % 10000000
+            seed = int(time.time()) % 1000
             if verbose:
                 print(f"Setting seed to {seed}")
             gerrychain.random.random.seed(seed)
             random.seed(seed)
 
-            if initial_assignment is None:
+            if initial_assignment is None or restarted:
                 if verbose:
                     print("Creating random initial partition...", end="")
                     sys.stdout.flush()
@@ -270,6 +271,7 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
 
         except TimeoutError:
             print("This initial partition wasn't going anywhere... trying a new one...")
+            restarted = True
     
     good_partitions = [obj.partition for obj in good_partitions]
     return good_partitions, df
@@ -351,7 +353,7 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
     for i, partition in enumerate(sorted(plans, key=lambda p: p["gerry_scores"][1], reverse=True)):
         # save_assignment(partition, os.path.join(output_dir, f"Plan_{i + 1}.json"))
         with open(os.path.join(output_dir, f"Plan_{i + 1}.json"), "w+") as f:
-            json.dump(partition.parts, f)
+            json.dump({part: list(nodes) for part, nodes in partition.parts.items()}, f)
     
     df.to_csv(os.path.join(output_dir, "optimization_stats.csv"))
 

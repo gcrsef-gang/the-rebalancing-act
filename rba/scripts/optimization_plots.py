@@ -3,8 +3,11 @@
 usage:
 python3 optimization_plots.py <state> <num_steps> <num_districts> <ensemble_dir> <optimize_dir>
 
-Where `optimize_dir` is already populated with the output from a call to `rba optimize`,
-`ensemble_dir` is likewise.
+state - name of the state
+num_steps - number of steps of ensemble analysis to use in creating heatmap
+num_distrcts - number of districts
+ensemble_dir - directory holding output from ensemble analysis
+optimize_dir - directory holding output from optimization
 
 THINGS TO NOTE BEFORE RUNNING:
 - ensemble.py MUST have the final scores_df block of code uncommented and the rest commented.
@@ -24,33 +27,31 @@ from rba.util import create_folder
 
 
 if __name__ == "__main__":
+    package_dir = os.path.dirname(os.path.realpath(__file__))
+
     state = sys.argv[1]
     num_steps = int(sys.argv[2])
     num_districts = int(sys.argv[3])
     ensemble_dir = sys.argv[4]
     optimize_dir = sys.argv[5]
 
-    graph_file = os.path.join(optimize_dir, f"{state}_geodata_merged.json")
-    difference_file = os.path.join(optimize_dir, f"{state}_communities.json")
-    vra_config_file = os.path.join(optimize_dir, f"vra_{state}.json")
+    graph_file = os.path.join(package_dir, f"../data/2010/{state}_geodata_merged.json")
+    difference_file = os.path.join(package_dir, f"../data/2010/{state}_communities.json")
+    vra_config_file = os.path.join(package_dir, f"../data/2010/vra_{state}.json")
 
     # State gerry scores over time.
     df = pd.read_csv(os.path.join(optimize_dir, "optimization_stats.csv"))
 
     plt.plot(np.arange(len(df.index)), df["state_gerry_score"])
-    plt.set_title("Statewide RBA Score")
-    plt.set_xlabel("Iteration")
+    plt.title("Statewide RBA Score")
+    plt.xlabel("Iteration")
     plt.savefig(os.path.join(optimize_dir, "simulated_annealing.png"))
     plt.clf()
 
-    # Gerrymandering heatmaps
-    for i in range(10):
-        with open(os.path.join(optimize_dir, f"Plan_{i + 1}"), "r") as f:
-            parts = json.load(f)
+    # Gerrymandering heatmap for the best map
+    with open(os.path.join(optimize_dir, f"Plan_1.json"), "r") as f:
+        parts = json.load(f)
 
-        part_dir = os.path.join(optimize_dir, f"{i + 1}-evaluation")
-        create_folder(part_dir)
-
-        ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,
-                          initial_plan_file=None, district_file=parts, output_dir=ensemble_dir,
-                          verbose=True)
+    ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,
+                      initial_plan_file=None, district_file=parts, output_dir=ensemble_dir,
+                      verbose=True)

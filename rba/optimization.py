@@ -91,7 +91,7 @@ def sa_accept_proposal(current_state, proposed_next_state, temperature):
     return False
 
 
-def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_districts, vra_threshold,
+def generate_districts_simulated_annealing(graph, differences, num_vra_districts, vra_threshold,
                                            pop_equality_threshold, num_steps, num_districts,
                                            cooling_schedule="linear", initial_assignment=None,
                                            verbose=False):
@@ -101,7 +101,7 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
     ----------
     graph : gerrychain.Graph
         The state graph of precincts.
-    edge_lifetimes : dict
+    differences : dict
         Maps edges (tuples of precinct IDs)
     num_vra_districts : dict
         Maps the name of each minority to the minimum number of VRA districts required for it.
@@ -138,7 +138,7 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
         "gerry_scores": lambda partition: quantify_gerrymandering(
             partition.graph,
             {dist: subgraph for dist, subgraph in partition.subgraphs.items()},
-            edge_lifetimes
+            differences
         )
     }
 
@@ -214,7 +214,8 @@ def generate_districts_simulated_annealing(graph, edge_lifetimes, num_vra_distri
 
     chain = SimulatedAnnealingChain(
         get_temperature=partial(
-            SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
+            # SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
+            SimulatedAnnealingChain.get_temperature_linear,
             num_steps=num_steps),
         # proposal=county_recom_proposal,
         proposal=recom_proposal,
@@ -292,12 +293,12 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
         sys.stdout.flush()
 
     with open(communitygen_out_file, "r") as f:
-        community_data = json.load(f)
-    edge_lifetimes = {}
-    for edge, lifetime in community_data["edge_lifetimes"].items():
+        difference_data = json.load(f)
+    differences = {}
+    for edge, lifetime in difference_data.items():
         u = edge.split(",")[0][2:-1]
         v = edge.split(",")[1][2:-2]
-        edge_lifetimes[(u, v)] = lifetime
+        differences[(u, v)] = lifetime
 
     if verbose:
         print("done!")
@@ -331,7 +332,7 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
         initial_assignment = None
 
     plans, df = generate_districts_simulated_annealing(
-        graph, edge_lifetimes, vra_config, vra_threshold, constants.POP_EQUALITY_THRESHOLD,
+        graph, differences, vra_config, vra_threshold, constants.POP_EQUALITY_THRESHOLD,
         num_steps, num_districts, initial_assignment=initial_assignment, verbose=verbose)
 
     if verbose:

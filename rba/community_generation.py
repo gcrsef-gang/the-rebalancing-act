@@ -148,6 +148,7 @@ def create_communities(graph_file, num_thresholds, output_file, verbose=False):
     # average similarity is less than or equal to than the threshold. This means it is possible for
     # a single community to be involved in multiple contractions during a single iteration.
     for t in range(num_thresholds + 1):
+        print(f"Current threshold: {t}/{num_thresholds+1}\r", end="")
         threshold = 1 - (t / num_thresholds)
         # Implemented with nested loops because we don't want to iterate over communities.edges
         # while contractions are occurring. The next iteration of this loop is reached whenever a

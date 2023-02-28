@@ -64,13 +64,13 @@ class SimplePartition:
 
 
 # UPDATERS
-def create_updaters(edge_lifetimes, vra_config, vra_threshold):
+def create_updaters(differences, vra_config, vra_threshold):
     rba_updaters = {
         "population": updaters.Tally("total_pop", alias="population"),
         "gerry_scores": lambda partition: quantify_gerrymandering(
             partition.graph,
             {dist: subgraph for dist, subgraph in partition.subgraphs.items()},
-            edge_lifetimes
+            differences
         )
     }
 
@@ -225,15 +225,16 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
     return scores_df
 
 
-def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, num_districts,
+def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,
                       initial_plan_file, district_file, output_dir, verbose=False):
     """Conducts a geographic ensemble analysis of a state's gerrymandering.
     """
-    seed = time.time()
-    if verbose:
-        print(f"Setting seed to {seed}")
-    gerrychain.random.random.seed(seed)
-    random.seed(seed)
+    # seed = time.time()
+    # seed = random.randint(0, 1e6)
+    # if verbose:
+        # print(f"Setting seed to {seed}")
+    # gerrychain.random.random.seed(seed)
+    # random.seed(seed)
 
     if verbose:
         print("Loading precinct graph...", end="")
@@ -250,11 +251,11 @@ def ensemble_analysis(graph_file, community_file, vra_config_file, num_steps, nu
         print("Loading community algorithm output...", end="")
         sys.stdout.flush()
 
-    with open(community_file, "r") as f:
-        community_data = json.load(f)
+    with open(difference_file, "r") as f:
+        difference_data = json.load(f)
 
     node_differences = {}
-    for edge, lifetime in community_data["edge_lifetimes"].items():
+    for edge, lifetime in difference_data.items():
         u = edge.split(",")[0][2:-1]
         v = edge.split(",")[1][2:-2]
         node_differences[(u, v)] = lifetime

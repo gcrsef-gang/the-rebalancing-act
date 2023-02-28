@@ -256,12 +256,13 @@ def load_districts(graph, district_file, verbose=False):
     if "GEOID10" in district_boundaries.columns:
         district_boundaries["GEOID10"].type = str
         district_boundaries.set_index("GEOID10", inplace=True)
-    elif "GEOID20" in district_boundaries.columns:
-        district_boundaries["GEOID20"].type = str
-        district_boundaries.set_index("GEOID20", inplace=True)
     elif "GEOID" in district_boundaries.columns:
         district_boundaries["GEOID"].type = str
         district_boundaries.set_index("GEOID", inplace=True)
+    else: 
+        district_boundaries["GEOID20"].type = str
+        district_boundaries.set_index("GEOID20", inplace=True)
+
 
     # graph = nx.readwrite.json_graph.adjacency_graph(graph_json)
     geodata_dict = {}

@@ -44,7 +44,7 @@ if __name__ == "__main__":
     quantify_parser.add_argument("--state", type=str, default="new_hampshire")
    #  quantify_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
    #  quantify_parser.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
-   #  quantify_parser.add_argument("--community_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
+   #  quantify_parser.add_argument("--difference_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
     quantify_parser.set_defaults(func=rba.district_quantification.quantify_districts)
 
     draw_parser = subparsers.add_parser("draw")
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     ensemble_parser = subparsers.add_parser("ensemble")
     ensemble_parser.add_argument("--state", type=str, default="new_hampshire")
    #  ensemble_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
-   #  ensemble_parser.add_argument("--community_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
+   #  ensemble_parser.add_argument("--difference_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
    #  ensemble_parser.add_argument("--vra_config_file", type=str, default=os.path.join(package_dir, "data/2010/vra_nh.json"))
     ensemble_parser.add_argument("--num_steps", type=int, default=100)
     ensemble_parser.add_argument("--num_districts", type=int, default=2)
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     optimize_parser = subparsers.add_parser("optimize")
     optimize_parser.add_argument("--state", type=str, default="new_hampshire")
    #  optimize_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
-   #  optimize_parser.add_argument("--communitygen_out_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
+   #  optimize_parser.add_argument("--differencegen_out_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
    #  optimize_parser.add_argument("--vra_config_file", type=str, default=os.path.join(package_dir, "data/2010/vra_nh.json"))
     optimize_parser.add_argument("--num_steps", type=int, default=100)
     optimize_parser.add_argument("--num_districts", type=int, default=2)
@@ -87,22 +87,22 @@ if __name__ == "__main__":
         arguments["output_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
     elif args.func.__name__ == "quantify_districts":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
-        arguments["community_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
+        arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
         arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
     elif args.func.__name__ == "visualize":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
-        arguments["edge_lifetime_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
+        arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
     elif args.func.__name__ == "ensemble_analysis":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
-        arguments["community_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
+        arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
         arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
         arguments["vra_config_file"] = os.path.join(package_dir, f"data/2010/vra_{state}.json")
     elif args.func.__name__ == "optimize":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         # with open(os.path.join(package_dir, f"data/2010/{state}_communities.json"), "r") as f:
-            # community_data = json.load(f)
+            # difference_data = json.load(f)
         arguments["communitygen_out_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
-        # arguments["communitygen_out_file"] = community_data
+        # arguments["communitygen_out_file"] = difference_data
         arguments["vra_config_file"] = os.path.join(package_dir, f"data/2010/vra_{state}.json")
    #  if arguments["func"] 
    #  args.func(**{key: val for key, val in vars(args).items() if key != "func"})

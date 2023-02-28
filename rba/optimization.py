@@ -53,25 +53,23 @@ class SimulatedAnnealingChain(RBAMarkovChain):
         super().__iter__()
         self.temperature = self.get_temperature(self.counter)
         return self
-        
+
+    def get_proposal_and_acceptance(self):
+        """Produces a proposal and returns it along with whether or not it is valid and accepted.
+        """
+        proposed_next_state = self.proposal(self.state)
+        # Erase the parent of the parent, to avoid memory leak
+        if self.state is not None:
+            self.state.parent = None
+
+        acceptance = (self.is_valid(proposed_next_state)
+                  and self.accept(self.state, proposed_next_state, self.get_temperature(self.counter)))
+        return proposed_next_state, acceptance
+
     def __next__(self):
-        if self.counter == 0:
-            self.counter += 1
-            return self.state
-
-        while self.counter < self.total_steps:
-            proposed_next_state = self.proposal(self.state)
-            # Erase the parent of the parent, to avoid memory leak
-            if self.state is not None:
-                self.state.parent = None
-
-            if self.is_valid(proposed_next_state):
-                if self.accept(self.state, proposed_next_state, self.get_temperature(self.counter)):
-                    self.state = proposed_next_state
-                self.counter += 1
-                self.temperature = self.get_temperature(self.counter)
-                return self.state
-        raise StopIteration
+        partition = super().__next__()
+        self.temperature = self.get_temperature(self.counter)
+        return partition
 
 
 @dataclass(order=True)
@@ -154,22 +152,6 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
         state_population += graph.nodes[node]["total_pop"]
     ideal_population = state_population / num_districts
 
-    if initial_assignment is None:
-        if verbose:
-            print("Creating random initial partition...", end="")
-            sys.stdout.flush()
-        initial_assignment = recursive_tree_part(
-            graph, range(num_districts),
-            pop_target=ideal_population,
-            pop_col="total_pop",
-            epsilon=constants.POP_EQUALITY_THRESHOLD)
-        if verbose:
-            print("done!")
-
-    initial_partition = Partition(graph, initial_assignment, sa_updaters)
-
-    visualize_partition_geopandas(initial_partition)
-
     # county_recom_proposal = partial(
     #     recom,
     #     pop_col="total_pop",
@@ -193,74 +175,101 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
         # )
     )
 
-    pop_constraint = constraints.within_percent_of_ideal_population(initial_partition,
-                                                                    pop_equality_threshold)
-    
-    # cut edges in the starting one.
-    # compactness_bound = constraints.UpperBound(
-    #     lambda p: len(p["cut_edges"]),
-    #     2 * len(initial_partition["cut_edges"])
-    # )
+    while True:
+        try:
+            seed = int(time.time()) % 10000000
+            if verbose:
+                print(f"Setting seed to {seed}")
+            gerrychain.random.random.seed(seed)
+            random.seed(seed)
 
-    vra_constraints = [
-        constraints.LowerBound(
-            lambda p: p[f"num_{minority}_vra_districts"],
-            num_districts
-        )
-        for minority, num_districts in num_vra_districts.items()]
+            if initial_assignment is None:
+                if verbose:
+                    print("Creating random initial partition...", end="")
+                    sys.stdout.flush()
+                initial_assignment = recursive_tree_part(
+                    graph, range(num_districts),
+                    pop_target=ideal_population,
+                    pop_col="total_pop",
+                    epsilon=constants.POP_EQUALITY_THRESHOLD)
+                if verbose:
+                    print("done!")
 
-    # acceptance_func = lambda curr, next_, t: sa_accept_proposal(curr, next_, t) \
-    #                                      and random.random() < get_county_border_proportion(next_)
+            initial_partition = Partition(graph, initial_assignment, sa_updaters)
 
-    chain = SimulatedAnnealingChain(
-        get_temperature=partial(
-            # SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
-            SimulatedAnnealingChain.get_temperature_linear,
-            num_steps=num_steps),
-        # proposal=county_recom_proposal,
-        proposal=recom_proposal,
-        constraints=[
-            pop_constraint,
-            # compactness_bound
-        ] + vra_constraints,
-        accept=sa_accept_proposal,
-        initial_state=initial_partition,
-        total_steps=num_steps
-    )
+            pop_constraint = constraints.within_percent_of_ideal_population(initial_partition,
+                                                                            pop_equality_threshold)
+            
+            # cut edges in the starting one.
+            # compactness_bound = constraints.UpperBound(
+            #     lambda p: len(p["cut_edges"]),
+            #     2 * len(initial_partition["cut_edges"])
+            # )
 
-    df = pd.DataFrame(
-        columns=[f"district_{i}_score" for i in range(1, num_districts + 1)] \
-            + ["state_gerry_score"] + ["temperature"],
-        dtype=float
-    )
+            vra_constraints = [
+                constraints.LowerBound(
+                    lambda p: p[f"num_{minority}_vra_districts"],
+                    num_districts
+                )
+                for minority, num_districts in num_vra_districts.items()]
 
-    if verbose:
-        print("Running Markov chain...")
+            # acceptance_func = lambda curr, next_, t: sa_accept_proposal(curr, next_, t) \
+            #                                      and random.random() < get_county_border_proportion(next_)
 
-    good_partitions = []  # min heap based on "goodness" score
-    if verbose:
-        chain_iter = chain.with_progress_bar()
-    else:
-        chain_iter = chain
-    for i, partition in enumerate(chain_iter):
-        district_scores, state_score = partition["gerry_scores"]
-        df.loc[len(df.index)] = sorted(list(district_scores.values())) + [state_score] \
-            + [chain.get_temperature(i)]
-
-        # First 10 partitions will be the best 10 so far.
-        if i < 10:
-            heapq.heappush(
-                good_partitions,
-                ScoredPartition(score=state_score, partition=partition)
-            )
-        elif state_score > good_partitions[0].score:  # better than the worst good score.
-            heapq.heapreplace(
-                good_partitions,
-                ScoredPartition(score=state_score, partition=partition)
+            chain = SimulatedAnnealingChain(
+                get_temperature=partial(
+                    # SimulatedAnnealingChain.COOLING_SCHEDULES[cooling_schedule],
+                    SimulatedAnnealingChain.get_temperature_linear,
+                    num_steps=num_steps),
+                # proposal=county_recom_proposal,
+                proposal=recom_proposal,
+                constraints=[
+                    pop_constraint,
+                    # compactness_bound
+                ] + vra_constraints,
+                accept=sa_accept_proposal,
+                initial_state=initial_partition,
+                total_steps=num_steps
             )
 
-        if verbose:
-            chain_iter.set_description(f"State score: {round(state_score, 4)}")
+            df = pd.DataFrame(
+                columns=[f"district_{i}_score" for i in range(1, num_districts + 1)] \
+                    + ["state_gerry_score"] + ["temperature"],
+                dtype=float
+            )
+
+            if verbose:
+                print("Running Markov chain...")
+
+            good_partitions = []  # min heap based on "goodness" score
+            if verbose:
+                chain_iter = chain.with_progress_bar()
+            else:
+                chain_iter = chain
+            for i, partition in enumerate(chain_iter):
+                district_scores, state_score = partition["gerry_scores"]
+                df.loc[len(df.index)] = sorted(list(district_scores.values())) + [state_score] \
+                    + [chain.get_temperature(i)]
+
+                # First 10 partitions will be the best 10 so far.
+                if i < 10:
+                    heapq.heappush(
+                        good_partitions,
+                        ScoredPartition(score=state_score, partition=partition)
+                    )
+                elif state_score > good_partitions[0].score:  # better than the worst good score.
+                    heapq.heapreplace(
+                        good_partitions,
+                        ScoredPartition(score=state_score, partition=partition)
+                    )
+
+                if verbose:
+                    chain_iter.set_description(f"State score: {round(state_score, 4)}")
+
+            break
+
+        except TimeoutError:
+            print("This initial partition wasn't going anywhere... trying a new one...")
     
     good_partitions = [obj.partition for obj in good_partitions]
     return good_partitions, df
@@ -270,12 +279,6 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
              initial_plan_file, output_dir, verbose):
     """Wrapper function for command-line usage.
     """
-    # NOTE: does not create reproducibility.
-    seed = time.time()
-    if verbose:
-        print(f"Setting seed to {seed}")
-    gerrychain.random.random.seed(seed)
-    random.seed(seed)
 
     if verbose:
         print("Loading precinct graph...", end="")
@@ -346,7 +349,9 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
 
     # Save districts in order of decreasing goodness.
     for i, partition in enumerate(sorted(plans, key=lambda p: p["gerry_scores"][1], reverse=True)):
-        save_assignment(partition, os.path.join(output_dir, f"Plan_{i + 1}.json"))
+        # save_assignment(partition, os.path.join(output_dir, f"Plan_{i + 1}.json"))
+        with open(os.path.join(output_dir, f"Plan_{i + 1}.json"), "w+") as f:
+            json.dump(partition.parts, f)
     
     df.to_csv(os.path.join(output_dir, "optimization_stats.csv"))
 

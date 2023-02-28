@@ -38,7 +38,12 @@ from rba.visualization import (visualize_gradient_geopandas, visualize_partition
 class RBAMarkovChain(MarkovChain):
     """Markov Chain for The Rebalancing Act. Changes to gerrychain.MarkovChain:
     - Ignores validity of initial plan.
+    - Stops chain if first or second partitions have taken more than 10 seconds.
     """
+
+    ALLOWED_SECOND_STEP_DURATION = 10
+
+
     def __init__(self, proposal, constraints, accept, initial_state, total_steps):
         try:
             super().__init__(proposal, constraints, accept, initial_state, total_steps)
@@ -53,6 +58,39 @@ class RBAMarkovChain(MarkovChain):
                     self.is_valid = Validator(constraints)
             else:
                 raise e
+            
+    def get_proposal_and_acceptance(self):
+        """Produces a proposal and returns it along with whether or not it is valid and accepted.
+        """
+        proposed_next_state = self.proposal(self.state)
+        # Erase the parent of the parent, to avoid memory leak
+        if self.state is not None:
+            self.state.parent = None
+
+        acceptance = self.is_valid(proposed_next_state) and self.accept(proposed_next_state)
+        return proposed_next_state, acceptance
+
+    def __next__(self):
+        if self.counter == 0:
+            self.counter += 1
+            return self.state
+
+        start_time = time.time()
+        if self.counter == 1:
+            keep_going = lambda: time.time() - start_time < RBAMarkovChain.ALLOWED_SECOND_STEP_DURATION
+        else:
+            keep_going = lambda: True
+        while self.counter < self.total_steps and keep_going():
+            proposal, accepted = self.get_proposal_and_acceptance()
+            if accepted:
+                self.state = proposal
+                self.counter += 1
+                return self.state
+
+        if self.counter == 1 and not keep_going():
+            raise TimeoutError("Waited more than 10 seconds for a valid and accepted first proposal.")
+
+        raise StopIteration
 
 
 @dataclass
@@ -152,22 +190,6 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
         state_population += graph.nodes[node]["total_pop"]
     ideal_population = state_population / num_districts
 
-    if initial_assignment is None:
-        if verbose:
-            print("Creating random initial partition...", end="")
-            sys.stdout.flush()
-        initial_assignment = recursive_tree_part(
-            graph, range(num_districts),
-            pop_target=ideal_population,
-            pop_col="total_pop",
-            epsilon=constants.POP_EQUALITY_THRESHOLD)
-        if verbose:
-            print("done!")
-
-    initial_partition = Partition(graph, initial_assignment, rba_updaters)
-
-    visualize_partition_geopandas(initial_partition)
-
     # weighted_recom_proposal = partial(
     #     recom,
     #     pop_col="total_pop",
@@ -192,35 +214,63 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
 
     all_constraints = create_constraints(initial_partition, num_vra_districts)
 
-    chain = RBAMarkovChain(
-        proposal=recom_proposal,
-        # proposal=weighted_recom_proposal,
-        constraints=all_constraints,
-        # accept=lambda p: random.random() < get_county_border_proportion(p),
-        accept=accept.always_accept,
-        initial_state=initial_partition,
-        total_steps=num_steps
-    )
+    while True:
+        try:
 
-    scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
+            seed = int(time.time()) % 10000000
+            if verbose:
+                print(f"Setting seed to {seed}")
+            gerrychain.random.random.seed(seed)
+            random.seed(seed)
 
-    if output_dir is not None:
-        create_folder(output_dir)
-        create_folder(os.path.join(output_dir, "plans"))
+            if initial_assignment is None:
+                if verbose:
+                    print("Creating random initial partition...", end="")
+                    sys.stdout.flush()
+                initial_assignment = recursive_tree_part(
+                    graph, range(num_districts),
+                    pop_target=ideal_population,
+                    pop_col="total_pop",
+                    epsilon=constants.POP_EQUALITY_THRESHOLD)
+                if verbose:
+                    print("done!")
 
-    if verbose:
-        print("Running Markov chain...")
-        sys.stdout.flush()
-        chain_iter = chain.with_progress_bar()
-    else:
-        chain_iter = chain
-    for i, partition in enumerate(chain_iter, start=1):
-        district_scores, state_score = partition["gerry_scores"]
-        districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
-        scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
-        if output_dir is not None:
-            with open(os.path.join(output_dir, "plans", f"{i}.pickle"), "wb+") as f:
-                pickle.dump((SimplePartition(partition.parts, partition.assignment), districts_order), f)
+            initial_partition = Partition(graph, initial_assignment, rba_updaters)
+
+            chain = RBAMarkovChain(
+                proposal=recom_proposal,
+                # proposal=weighted_recom_proposal,
+                constraints=all_constraints,
+                # accept=lambda p: random.random() < get_county_border_proportion(p),
+                accept=accept.always_accept,
+                initial_state=initial_partition,
+                total_steps=num_steps
+            )
+
+            scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
+
+            if output_dir is not None:
+                create_folder(output_dir)
+                create_folder(os.path.join(output_dir, "plans"))
+
+            if verbose:
+                print("Running Markov chain...")
+                sys.stdout.flush()
+                chain_iter = chain.with_progress_bar()
+            else:
+                chain_iter = chain
+            for i, partition in enumerate(chain_iter, start=1):
+                district_scores, state_score = partition["gerry_scores"]
+                districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
+                scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
+                if output_dir is not None:
+                    with open(os.path.join(output_dir, "plans", f"{i}.pickle"), "wb+") as f:
+                        pickle.dump((SimplePartition(partition.parts, partition.assignment), districts_order), f)
+        
+            break
+
+        except TimeoutError:
+            print("This initial partition wasn't going anywhere... trying a new one...")
 
     return scores_df
 
@@ -229,12 +279,6 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
                       initial_plan_file, district_file, output_dir, verbose=False):
     """Conducts a geographic ensemble analysis of a state's gerrymandering.
     """
-    # seed = time.time()
-    # seed = random.randint(0, 1e6)
-    # if verbose:
-        # print(f"Setting seed to {seed}")
-    # gerrychain.random.random.seed(seed)
-    # random.seed(seed)
 
     if verbose:
         print("Loading precinct graph...", end="")
@@ -294,6 +338,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     scores_df = generate_ensemble(graph, node_differences, vra_config, vra_threshold,
                                   constants.POP_EQUALITY_THRESHOLD, num_steps, num_districts,
                                   initial_assignment, output_dir, verbose)
+    scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
 
     # IN CASE THIS HAS ALREADY BEEN RUN AND WE WANT TO REGENERATE MAPS AND PLOTS, UNCOMMENT THE
     # BLOCK OF CODE BELOW AND COMMENT OUT THE BLOCK OF CODE ABOVE.
@@ -302,18 +347,22 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     # for step in tqdm(range(num_steps)):
     #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "rb") as f:
     #         partition, _ = pickle.load(f)
-    #     subgraphs = {part: graph.subgraph(partition.parts[part]) for part in partition.parts}
     #     district_scores, state_score = quantify_gerrymandering(
     #         graph,
-    #         subgraphs,
+    #         partition.parts,
     #         node_differences
     #     )
     #     districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
     #     scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
     #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "wb") as f:
     #         partition = pickle.dump((partition, districts_order), f)
+    # scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
 
-    scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
+    # IN CASE THIS HAS ALREADY BEEN RUN AND WE JUST WANT TO GENERATE THE FINAL THREE VISUALS FOR 
+    # A GIVEN DISTRICT MAP, UNCOMMENT THE BLOCK OF CODE BELOW, AND COMMENT OUT THE SAME BLOCK OF
+    # CODE AS MENTIONED ABOVE.
+    # print("Using existing partitions and scores.")
+    # scores_df = pd.read_csv(os.path.join(output_dir, "scores.csv"))
 
     create_folder(os.path.join(output_dir, "visuals"))
 
@@ -376,7 +425,10 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         ]
 
     districts_precinct_df = pd.DataFrame(columns=["score", "homogeneity"], index=sorted_node_names)
-    district_node_sets = load_districts(graph, district_file, verbose)
+    if isinstance(district_file, str):
+        district_node_sets = load_districts(graph, district_file, verbose)
+    else:
+        district_node_sets = district_file
     district_scores, state_score = quantify_gerrymandering(graph, district_node_sets, node_differences, verbose)
     for district, precincts in district_node_sets.items():
         homogeneity = statistics.stdev(

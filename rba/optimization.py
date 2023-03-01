@@ -74,8 +74,8 @@ class SimulatedAnnealingChain(RBAMarkovChain):
 
 @dataclass(order=True)
 class ScoredPartition:
-    """A comparable class for storing partitions and they gerrymandering scores."""
-    score: float
+    """A comparable class for storing partitions and (1 - difference score)."""
+    goodness_score: float
     partition: Partition=field(compare=False)
 
 
@@ -175,6 +175,8 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
         # )
     )
 
+    # TODO: save every partition
+
     restarted = False
     while True:
         try:
@@ -242,7 +244,7 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
             if verbose:
                 print("Running Markov chain...")
 
-            good_partitions = []  # min heap based on "goodness" score
+            good_partitions = []  # min heap based on (1 - difference score)
             if verbose:
                 chain_iter = chain.with_progress_bar()
             else:
@@ -256,13 +258,15 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
                 if i < 10:
                     heapq.heappush(
                         good_partitions,
-                        ScoredPartition(score=state_score, partition=partition)
+                        ScoredPartition(goodness_score=(1 - state_score), partition=partition)
                     )
-                elif state_score > good_partitions[0].score:  # better than the worst good score.
+                elif (1 - state_score) > good_partitions[0].goodness_score:  # better than the worst good score.
                     heapq.heapreplace(
                         good_partitions,
-                        ScoredPartition(score=state_score, partition=partition)
+                        ScoredPartition(goodness_score=(1 - state_score), partition=partition)
                     )
+
+
 
                 if verbose:
                     chain_iter.set_description(f"State score: {round(state_score, 4)}")
@@ -349,8 +353,8 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
     except FileExistsError:
         pass
 
-    # Save districts in order of decreasing goodness.
-    for i, partition in enumerate(sorted(plans, key=lambda p: p["gerry_scores"][1], reverse=True)):
+    # Save districts in order of increasing gerrymandering score.
+    for i, partition in enumerate(sorted(plans, key=lambda p: p["gerry_scores"][1])):
         # save_assignment(partition, os.path.join(output_dir, f"Plan_{i + 1}.json"))
         with open(os.path.join(output_dir, f"Plan_{i + 1}.json"), "w+") as f:
             json.dump({part: list(nodes) for part, nodes in partition.parts.items()}, f)

@@ -14,5 +14,13 @@ MINORITY_NAMES = ["black", "hispanic", "asian", "native", "islander"]
 SIMILARITY_WEIGHTS = {
     "race": 1.0,
     "votes": 1.0,
-    "pop_density": 1.0
+    "pop_density": 1.0,
+    "county": 0.5
 }
+
+# Due logarithm domain redistriction
+MIN_POP_DENSITY = 1e-20
+
+RACE_KEYS = ["total_white", "total_black", "total_hispanic", "total_asian", "total_islander", "total_native"]
+
+VOTE_KEYS = ["total_rep", "total_dem"]

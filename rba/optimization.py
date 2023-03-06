@@ -266,8 +266,6 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
                         ScoredPartition(goodness_score=(1 - state_score), partition=partition)
                     )
 
-
-
                 if verbose:
                     chain_iter.set_description(f"State score: {round(state_score, 4)}")
 

@@ -111,27 +111,24 @@ def compute_precinct_similarities(graph, name=None, verbose=False):
         graph.edges[node1, node2]["similarity"] = similarity
         for metric, dist in distances.items():
             if metric in all_edges_distances:
-                all_edges_distances["metric"].append(dist)
+                all_edges_distances[metric].append(dist)
             else:
-                all_edges_distances["metric"] = [dist]
+                all_edges_distances[metric] = [dist]
         similarities.append(similarity)
 
         if verbose:
             edges_iter.set_description(
-                "\t".join([f"{distances[metric]} dist: {round(dist, 3)}" for metric, dist in distances.items()])
-                + f"\tsimilarity: {round(similarity, 3)}                "
+                " ".join([f"{distances[metric]}_dist={round(dist, 3)}" for metric, dist in distances.items()])
+                + f" similarity={round(similarity, 3)}"
             )
 
     for metric, distances in all_edges_distances.items():
-        plt.hist(distances, bins=50, label=f"{metric.capitalize()} Distance")
+        plt.hist(distances, bins=50, label=f"{metric.replace('_', ' ').capitalize()} Distance")
     plt.hist(similarities, bins=50, label="Similarity")
     plt.title(f"{name} Similarities")
     plt.legend()
     plt.savefig("similarities.png")
     plt.clf()
-
-    if verbose:
-        print()
 
 
 def create_communities(graph_file, num_thresholds, output_file, use_similarities=False,
@@ -168,7 +165,7 @@ def create_communities(graph_file, num_thresholds, output_file, use_similarities
             print("Calculating precinct similarities...", end="")
             sys.stdout.flush()
 
-        compute_precinct_similarities(graph, verbose)
+        compute_precinct_similarities(graph, name=graph_file.split(".")[0], verbose=verbose)
         new_data = nx.readwrite.json_graph.adjacency_data(graph)
         with open(graph_file, "w") as f:
             json.dump(new_data, f)
@@ -198,7 +195,8 @@ def create_communities(graph_file, num_thresholds, output_file, use_similarities
         thresholds_iter = range(1, num_thresholds + 1)
     for t in thresholds_iter:
         threshold = 1 - (t / num_thresholds)
-        thresholds_iter.set_description(f"Current threshold: {round(threshold, 4)}   \r", end="")
+        if verbose:
+            thresholds_iter.set_description(f"Current threshold: {round(threshold, 4)}")
         # Implemented with nested loops because we don't want to iterate over communities.edges
         # while contractions are occurring. The next iteration of this loop is reached whenever a
         # contraction occurs.

@@ -1,6 +1,7 @@
 """Miscellaneous utilities.
 """
 
+from dataclasses import dataclass
 import json
 import random
 import os
@@ -20,6 +21,14 @@ import maup
 from . import constants
 from . import visualization
 # from .district_quantification import quantify_gerrymandering
+
+
+@dataclass
+class SimplePartition:
+    """Only stores parts and assignment for easy pickling.
+    """
+    parts: dict
+    assignment: dict
 
 
 def create_folder(path):
@@ -215,16 +224,6 @@ def choose_cut(possible_cuts, graph):
     # need to provide functionality for that as well.
     else:
         return random.choice(possible_cuts)
-
-
-def save_assignment(partition, fpath):
-    """Saves a partition's node assignment data to a file.
-    """
-    assignment = {}
-    for u in partition.graph.nodes:
-        assignment[u] = partition.assignment[u]
-    with open(fpath, "w+") as f:
-        json.dump(assignment, f)
 
 
 def partition_by_county(graph):

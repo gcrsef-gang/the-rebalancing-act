@@ -3,7 +3,6 @@ Uses a recombination Markov Chain Monte Carlo method to generate an ensemble of 
 for a state. Enforces population equality, VRA compliance, and biases towards following county lines.
 """
 
-from dataclasses import dataclass
 from functools import partial
 import json
 import math
@@ -30,7 +29,8 @@ import pandas as pd
 from rba import constants
 from rba.district_quantification import quantify_gerrymandering, quantify_districts
 from rba.util import (get_num_vra_districts, get_county_weighted_random_spanning_tree,
-                      get_county_spanning_forest, choose_cut, create_folder, load_districts)
+                      get_county_spanning_forest, choose_cut, create_folder, load_districts,
+                      SimplePartition)
 from rba.visualization import (visualize_gradient_geopandas, visualize_partition_geopandas,
                                visualize_metric)
 
@@ -91,14 +91,6 @@ class RBAMarkovChain(MarkovChain):
             raise TimeoutError("Waited more than 10 seconds for a valid and accepted first proposal.")
 
         raise StopIteration
-
-
-@dataclass
-class SimplePartition:
-    """Only stores parts and assignment for easy pickling.
-    """
-    parts: dict
-    assignment: dict
 
 
 # UPDATERS
@@ -345,26 +337,23 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
     else:
         # IN CASE THIS HAS ALREADY BEEN RUN AND WE WANT TO REGENERATE MAPS AND PLOTS, UNCOMMENT THE
-        # BLOCK OF CODE BELOW AND COMMENT OUT THE BLOCK OF CODE ABOVE.
-        scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
-        print("Re-calculating scores from existing ensemble")
-        for step in tqdm(range(num_steps)):
-            with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "rb") as f:
-                partition, _ = pickle.load(f)
-            district_scores, state_score = quantify_gerrymandering(
-                graph,
-                partition.parts,
-                node_differences
-            )
-            districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
-            scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
-            with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "wb") as f:
-                partition = pickle.dump((partition, districts_order), f)
-        scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
+        # BLOCK OF CODE BELOW.
+        # scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
+        # print("Re-calculating scores from existing ensemble")
+        # for step in tqdm(range(num_steps)):
+        #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "rb") as f:
+        #         partition, _ = pickle.load(f)
+        #     district_scores, state_score = quantify_gerrymandering(
+        #         graph,
+        #         partition.parts,
+        #         node_differences
+        #     )
+        #     districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
+        #     scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
+        #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "wb") as f:
+        #         partition = pickle.dump((partition, districts_order), f)
+        # scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
 
-        # IN CASE THIS HAS ALREADY BEEN RUN AND WE JUST WANT TO GENERATE THE FINAL THREE VISUALS FOR 
-        # A GIVEN DISTRICT MAP, UNCOMMENT THE BLOCK OF CODE BELOW, AND COMMENT OUT THE SAME BLOCK OF
-        # CODE AS MENTIONED ABOVE.
         print("Using existing partitions and scores.")
         scores_df = pd.read_csv(os.path.join(output_dir, "scores.csv"))
 
@@ -506,7 +495,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         linewidth=0.5
     )
 
-    _, ax = plt.subplots(figsize=(30, 15))
+    _, ax = plt.subplots(figsize=(12.8, 9.6))
     visualize_gradient_geopandas(
         sorted_node_names,
         get_value=lambda u: precinct_df.loc[u, "avg_score"],

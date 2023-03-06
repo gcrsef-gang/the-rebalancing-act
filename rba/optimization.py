@@ -8,12 +8,12 @@ from functools import partial
 import heapq
 import json
 import os
+import pickle
 import random
 import sys
 import time
-import warnings
 
-from gerrychain import Partition, Graph, updaters, constraints, accept
+from gerrychain import Partition, Graph, updaters, constraints
 from gerrychain.proposals import recom
 from gerrychain.tree import recursive_tree_part, bipartition_tree, uniform_spanning_tree
 import gerrychain.random
@@ -23,8 +23,8 @@ import pandas as pd
 from . import constants
 from .district_quantification import quantify_gerrymandering
 from .ensemble import RBAMarkovChain
-from .util import (get_num_vra_districts, load_districts, get_county_spanning_forest,
-                   save_assignment, choose_cut)
+from .util import (get_num_vra_districts, load_districts, get_county_spanning_forest, choose_cut,
+                   create_folder, SimplePartition)
 from .visualization import visualize_partition_geopandas
 
 
@@ -91,8 +91,8 @@ def sa_accept_proposal(current_state, proposed_next_state, temperature):
 
 def generate_districts_simulated_annealing(graph, differences, num_vra_districts, vra_threshold,
                                            pop_equality_threshold, num_steps, num_districts,
-                                           cooling_schedule="linear", initial_assignment=None,
-                                           verbose=False):
+                                           output_dir=None, cooling_schedule="linear",
+                                           initial_assignment=None, verbose=False):
     """Runs a simulated annealing Markov Chain that maximizes the "RBA goodness score."
 
     Parameters
@@ -113,6 +113,8 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
         The number of iterations to run simulated annealing for.
     num_districts : int
         The number of districts to partition the state into.
+    output_dir : str, default=None
+        Directory for writing pickled partitions.
     cooling_schedule : str, default="linear"
         Determines how the temperature decreases during simulated annealing.
         Options: "linear"
@@ -175,7 +177,8 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
         # )
     )
 
-    # TODO: save every partition
+    if output_dir is not None:
+        create_folder(os.path.join(output_dir, "plans"))
 
     restarted = False
     while True:
@@ -250,6 +253,11 @@ def generate_districts_simulated_annealing(graph, differences, num_vra_districts
             else:
                 chain_iter = chain
             for i, partition in enumerate(chain_iter):
+                # TODO: if we're saving every plan we no longer need to save the 10 best explicitly,
+                # but we can remove them later since optimization_plots.py is dependent on them.
+                if output_dir is not None:
+                    with open(os.path.join(output_dir, "plans", f"{i}.pickle"), "wb+") as f:
+                        pickle.dump(SimplePartition(partition.parts, partition.assignment), f)
                 district_scores, state_score = partition["gerry_scores"]
                 df.loc[len(df.index)] = sorted(list(district_scores.values())) + [state_score] \
                     + [chain.get_temperature(i)]
@@ -338,22 +346,19 @@ def optimize(graph_file, communitygen_out_file, vra_config_file, num_steps, num_
             print("No starting map provided. Will generate a random one later.")
         initial_assignment = None
 
+    create_folder(output_dir)
+
     plans, df = generate_districts_simulated_annealing(
         graph, differences, vra_config, vra_threshold, constants.POP_EQUALITY_THRESHOLD,
-        num_steps, num_districts, initial_assignment=initial_assignment, verbose=verbose)
+        num_steps, num_districts, output_dir=output_dir, initial_assignment=initial_assignment,
+        verbose=verbose)
 
     if verbose:
         print("Saving data from optimization...", end="")
         sys.stdout.flush()
 
-    try:
-        os.mkdir(output_dir)
-    except FileExistsError:
-        pass
-
     # Save districts in order of increasing gerrymandering score.
     for i, partition in enumerate(sorted(plans, key=lambda p: p["gerry_scores"][1])):
-        # save_assignment(partition, os.path.join(output_dir, f"Plan_{i + 1}.json"))
         with open(os.path.join(output_dir, f"Plan_{i + 1}.json"), "w+") as f:
             json.dump({part: list(nodes) for part, nodes in partition.parts.items()}, f)
     

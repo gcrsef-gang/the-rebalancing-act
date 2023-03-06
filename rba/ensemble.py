@@ -444,7 +444,6 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
 
     if optimize_vis:
         output_dir = vis_dir
-
     # Save a histogram of statewide scores.
     plt.hist(scores_df["state_gerry_score"], bins=30)
     plt.axvline(scores_df["state_gerry_score"].mean(), color='k', linestyle='dashed', linewidth=1)
@@ -466,7 +465,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
             districts_assignment[node] = district
     districts_partition = Partition(graph, assignment=districts_assignment)
 
-    _, ax = plt.subplots(figsize=(60, 30))
+    _, ax = plt.subplots(figsize=(12.8, 9.6))
     visualize_gradient_geopandas(
         sorted_node_names,
         get_value=partial(get_z_score, metric="score"),

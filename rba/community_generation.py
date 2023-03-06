@@ -99,7 +99,7 @@ def compute_precinct_similarities(graph, name=None, verbose=False):
         transformed_log_pop_2 = (data2["log_pop_density"] - min_log_pop_density) / log_pop_density_range
         distances["pop_density"] = abs(transformed_log_pop_1 - transformed_log_pop_2)
 
-        distances["county"] = 1 if data1["COUNTYFP10"] == data2["COUNTYFP10"] else 0
+        distances["county"] = 0 if data1["COUNTYFP10"] == data2["COUNTYFP10"] else 1
 
         distance_list = []
         weight_list = []
@@ -118,7 +118,7 @@ def compute_precinct_similarities(graph, name=None, verbose=False):
 
         if verbose:
             edges_iter.set_description(
-                " ".join([f"{distances[metric]}_dist={round(dist, 3)}" for metric, dist in distances.items()])
+                " ".join([f"{metric}_dist={round(dist, 3)}" for metric, dist in distances.items()])
                 + f" similarity={round(similarity, 3)}"
             )
 

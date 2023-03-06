@@ -18,15 +18,8 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
 
+from .constants import SIMILARITY_WEIGHTS
 from .util import copy_adjacency
-
-
-
-SIMILARITY_WEIGHTS = {
-    "race": 1.0,
-    "votes": 1.0,
-    "pop_density": 1.0
-}
 
 
 def compute_precinct_similarities(graph, verbose=False):

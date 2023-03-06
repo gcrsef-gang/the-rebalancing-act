@@ -43,7 +43,7 @@ if __name__ == "__main__":
     df = pd.read_csv(os.path.join(optimize_dir, "optimization_stats.csv"))
 
     plt.plot(np.arange(len(df.index)), df["state_gerry_score"])
-    plt.title("Statewide RBA Score")
+    plt.ylabel("Statewide Difference Score")
     plt.xlabel("Iteration")
     plt.savefig(os.path.join(optimize_dir, "simulated_annealing.png"))
     plt.clf()

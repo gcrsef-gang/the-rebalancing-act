@@ -278,7 +278,8 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
 
 
 def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,
-                      initial_plan_file, district_file, output_dir, optimize_vis=False, vis_dir=None, verbose=False):
+                      initial_plan_file, district_file, output_dir, optimize_vis=False,
+                      vis_dir=None, verbose=False):
     """Conducts a geographic ensemble analysis of a state's gerrymandering.
     """
 
@@ -465,7 +466,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
             districts_assignment[node] = district
     districts_partition = Partition(graph, assignment=districts_assignment)
 
-    _, ax = plt.subplots(figsize=(12.8, 9.6))
+    _, ax = plt.subplots(figsize=(60, 30))
     visualize_gradient_geopandas(
         sorted_node_names,
         get_value=partial(get_z_score, metric="score"),
@@ -504,6 +505,18 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         facecolor="none",
         edgecolor="black",
         linewidth=0.5
+    )
+
+    _, ax = plt.subplots(figsize=(30, 15))
+    visualize_gradient_geopandas(
+        sorted_node_names,
+        get_value=lambda u: precinct_df.loc[u, "avg_score"],
+        get_geometry=lambda u: graph.nodes[u]["geometry"],
+        vmax=max(district_scores.values()),
+        vmin=min(district_scores.values()),
+        img_path=os.path.join(output_dir, "raw_scores.png"),
+        ax=ax,
+        legend=True
     )
 
     if verbose:

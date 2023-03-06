@@ -89,7 +89,10 @@ if __name__ == "__main__":
     elif args.func.__name__ == "quantify_districts":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
-        arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
+        if state == "north_carolina":
+            arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts_2010.json")
+        else:
+            arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
     elif args.func.__name__ == "visualize":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")

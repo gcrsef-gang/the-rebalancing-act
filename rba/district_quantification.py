@@ -21,6 +21,7 @@ def quantify_gerrymandering(state_graph, districts, difference_scores, verbose=F
     # Two lookups 
     crossdistrict_edges = {district : [] for district in districts}
     for district, graph in districts.items():
+        # print(district, graph.nodes)
             # state_graph.remove_edge(edge[0], edge[1])
         # state_graph.remove_edges_from(graph.edges)
         for node in graph:
@@ -77,9 +78,9 @@ def quantify_districts(graph_file, district_file, difference_file, verbose=False
     with open(graph_file, "r") as f:
         graph_json = json.load(f)
     graph = nx.readwrite.json_graph.adjacency_graph(graph_json)
-    # districts = load_districts(graph, district_file)
-    with open(district_file, "r") as f:
-        districts = json.load(f)
+    districts = load_districts(graph, district_file)
+    # with open(district_file, "r") as f:
+    #     districts = json.load(f)
 
     with open(difference_file, "r") as f:
         supercommunity_output = json.load(f)  # Contains strings as keys.
@@ -91,5 +92,5 @@ def quantify_districts(graph_file, district_file, difference_file, verbose=False
         difference_scores[(u, v)] = lifetime
     print('Differences loaded')
     district_gerrymanderings, state_gerrymandering = quantify_gerrymandering(graph, districts, difference_scores)
-    print(district_gerrymanderings, state_gerrymandering)
+    print(sorted(district_gerrymanderings.items()), state_gerrymandering)
     return districts, district_gerrymanderings, state_gerrymandering

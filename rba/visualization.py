@@ -588,7 +588,7 @@ def visualize_metric(output_fpath, graph, metric_name):
         show=False)
 
 
-def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, node_sizes=None, show=False):
+def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, node_sizes=None):
     """Creates an image of a graph and saves it to a file.
 
     :param graph: The graph you want to visualize.
@@ -672,10 +672,10 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, n
     # for coord in new_y_coords:
     #     print([coord, (coord[0]-100, coord[1])])
     #     draw.line([tuple(coord), (coord[0]-1000, coord[1])], width=1, fill=(0,255,255))
-    if output_path is not None:
-        graph_image.save(output_path)
-    if show:
-        graph_image.show()
+    # if output_path is not None:
+    graph_image.save(output_path)
+    # if show:
+        # graph_image.show()
 
 
 def visualize(output_file, graph_file, difference_file, num_frames, partition_file, verbose):
@@ -705,4 +705,4 @@ if __name__ == "__main__":
     with open(sys.argv[1], "rb") as f:
         graph = nx.readwrite.json_graph.adjacency_graph(json.load(f))
 
-    visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"], show=True)
+    visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"])

@@ -270,7 +270,7 @@ def generate_ensemble(graph, node_differences, num_vra_districts, vra_threshold,
 
 
 def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,
-                      initial_plan_file, district_file, output_dir, optimize_vis=False,
+                      initial_plan_file, district_file, output_dir,
                       vis_dir=None, verbose=False):
     """Conducts a geographic ensemble analysis of a state's gerrymandering.
     """
@@ -330,7 +330,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
             print("No starting map provided. Will generate a random one later.")
         initial_assignment = None
 
-    if not optimize_vis:
+    if not vis_dir:
         scores_df = generate_ensemble(graph, node_differences, vra_config, vra_threshold,
                                       constants.POP_EQUALITY_THRESHOLD, num_steps, num_districts,
                                       initial_assignment, output_dir, verbose)
@@ -338,21 +338,21 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     else:
         # IN CASE THIS HAS ALREADY BEEN RUN AND WE WANT TO REGENERATE MAPS AND PLOTS, UNCOMMENT THE
         # BLOCK OF CODE BELOW.
-        # scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
-        # print("Re-calculating scores from existing ensemble")
-        # for step in tqdm(range(num_steps)):
-        #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "rb") as f:
-        #         partition, _ = pickle.load(f)
-        #     district_scores, state_score = quantify_gerrymandering(
-        #         graph,
-        #         partition.parts,
-        #         node_differences
-        #     )
-        #     districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
-        #     scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
-        #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "wb") as f:
-        #         partition = pickle.dump((partition, districts_order), f)
-        # scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
+        scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
+        print("Re-calculating scores from existing ensemble")
+        for step in tqdm(range(num_steps)):
+            with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "rb") as f:
+                partition, _ = pickle.load(f)
+            district_scores, state_score = quantify_gerrymandering(
+                graph,
+                partition.parts,
+                node_differences
+            )
+            districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
+            scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
+            with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "wb") as f:
+                partition = pickle.dump((partition, districts_order), f)
+        scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
 
         print("Using existing partitions and scores.")
         scores_df = pd.read_csv(os.path.join(output_dir, "scores.csv"))
@@ -431,13 +431,15 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         for precinct in precincts:
             districts_precinct_df.loc[precinct] = [district_scores[district], homogeneity]
 
-    if optimize_vis:
-        output_dir = vis_dir
+    if vis_dir:
+        create_folder(vis_dir)
+    else:
+        vis_dir = output_dir
     # Save a histogram of statewide scores.
     plt.hist(scores_df["state_gerry_score"], bins=30)
     plt.axvline(scores_df["state_gerry_score"].mean(), color='k', linestyle='dashed', linewidth=1)
     plt.axvline(state_score, color='red', linestyle='solid', linewidth=1)
-    plt.savefig(os.path.join(output_dir, "score_distribution.png"))
+    plt.savefig(os.path.join(vis_dir, "score_distribution.png"))
 
     # Create gerrymandering and packing/cracking heatmaps for the inputted districting plan.
 
@@ -467,7 +469,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     visualize_partition_geopandas(
         districts_partition,
         union=True,
-        img_path=os.path.join(output_dir, "gerry_scores.png"),
+        img_path=os.path.join(vis_dir, "gerry_scores.png"),
         clear=True,
         ax=ax,
         facecolor="none",
@@ -487,7 +489,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     visualize_partition_geopandas(
         districts_partition,
         union=True,
-        img_path=os.path.join(output_dir, "packing_cracking.png"),
+        img_path=os.path.join(vis_dir, "packing_cracking.png"),
         clear=True,
         ax=ax,
         facecolor="none",
@@ -502,7 +504,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         get_geometry=lambda u: graph.nodes[u]["geometry"],
         vmax=max(district_scores.values()),
         vmin=min(district_scores.values()),
-        img_path=os.path.join(output_dir, "raw_scores.png"),
+        img_path=os.path.join(vis_dir, "raw_scores.png"),
         ax=ax,
         legend=True
     )

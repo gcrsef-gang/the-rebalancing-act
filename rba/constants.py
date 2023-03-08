@@ -11,11 +11,17 @@ POP_EQUALITY_THRESHOLD = 0.005
 
 MINORITY_NAMES = ["black", "hispanic", "asian", "native", "islander"]
 
+# SIMILARITY_WEIGHTS = {
+#     "race": 1.5,
+#     "votes": 1.0,
+#     "pop_density": 1.0,
+#     "county": 0.1
+# }
 SIMILARITY_WEIGHTS = {
-    "race": 1.5,
+    "race": 1.0,
     "votes": 1.0,
     "pop_density": 1.0,
-    "county": 0.1
+    "county": 0.3
 }
 
 # Due logarithm domain redistriction

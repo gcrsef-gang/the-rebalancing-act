@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+
 from rba.ensemble import ensemble_analysis
 from rba.util import create_folder
 
@@ -49,9 +50,10 @@ if __name__ == "__main__":
     plt.clf()
 
     # Gerrymandering heatmap for the best map
-    with open(os.path.join(optimize_dir, f"Plan_1.json"), "r") as f:
+    with open(os.path.join(optimize_dir, f"Plan_10.json"), "r") as f:
         parts = json.load(f)
 
     ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,
-                      initial_plan_file=None, district_file=parts, output_dir=ensemble_dir,optimize_vis=True,
+                      initial_plan_file=None, district_file=parts, output_dir=ensemble_dir,
                       vis_dir=optimize_dir,verbose=True)
+                    #   vis_dir="maryland_optimize_second_10000",verbose=True)

@@ -36,7 +36,7 @@ if __name__ == "__main__":
     communitygen_parser = subparsers.add_parser("communitygen")
     communitygen_parser.add_argument("--state", type=str, default="new_hampshire")
    #  communitygen_parser.add_argument("--graph_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_geodata_merged.json"))
-    communitygen_parser.add_argument("--num_thresholds", type=int, default=50)
+    communitygen_parser.add_argument("--num_thresholds", type=int, default=1000)
    #  communitygen_parser.add_argument("--output_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_communities.json"))
     communitygen_parser.set_defaults(func=rba.community_generation.create_communities)
     
@@ -64,6 +64,7 @@ if __name__ == "__main__":
     ensemble_parser.add_argument("--num_steps", type=int, default=100)
     ensemble_parser.add_argument("--num_districts", type=int, default=2)
     ensemble_parser.add_argument("--initial_plan_file", type=str, default=None)
+    ensemble_parser.add_argument("--vis_dir", type=str, default=None)
     # ensemble_parser.add_argument("--optimize", type=True, default=None)
    #  ensemble_parser.add_argument("--district_file", type=str, default=os.path.join(package_dir, "data/2010/new_hampshire_districts.json"))
     ensemble_parser.add_argument("-o", "--output_dir", type=str)
@@ -90,7 +91,8 @@ if __name__ == "__main__":
         arguments["graph_file"] = os.path.join(package_dir, f"data/2010/{state}_geodata_merged.json")
         arguments["difference_file"] = os.path.join(package_dir, f"data/2010/{state}_communities.json")
         if state == "north_carolina":
-            arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts_2010.json")
+            # arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts_2010.json")
+            arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
         else:
             arguments["district_file"] = os.path.join(package_dir, f"data/2010/{state}_districts.json")
     elif args.func.__name__ == "visualize":

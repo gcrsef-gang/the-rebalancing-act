@@ -22,6 +22,7 @@ from tqdm import tqdm
 from welford import Welford
 import gerrychain.random
 import matplotlib.pyplot as plt
+import matplotlib.colors
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -338,21 +339,21 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     else:
         # IN CASE THIS HAS ALREADY BEEN RUN AND WE WANT TO REGENERATE MAPS AND PLOTS, UNCOMMENT THE
         # BLOCK OF CODE BELOW.
-        scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
-        print("Re-calculating scores from existing ensemble")
-        for step in tqdm(range(num_steps)):
-            with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "rb") as f:
-                partition, _ = pickle.load(f)
-            district_scores, state_score = quantify_gerrymandering(
-                graph,
-                partition.parts,
-                node_differences
-            )
-            districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
-            scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
-            with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "wb") as f:
-                partition = pickle.dump((partition, districts_order), f)
-        scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
+        # scores_df = pd.DataFrame(columns=[f"district {i}" for i in range(1, num_districts + 1)] + ["state_gerry_score"], dtype=float)
+        # print("Re-calculating scores from existing ensemble")
+        # for step in tqdm(range(num_steps)):
+        #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "rb") as f:
+        #         partition, _ = pickle.load(f)
+        #     district_scores, state_score = quantify_gerrymandering(
+        #         graph,
+        #         partition.parts,
+        #         node_differences
+        #     )
+        #     districts_order = sorted(list(district_scores.keys()), key=lambda d: district_scores[d])
+        #     scores_df.loc[len(scores_df.index)] = [district_scores[d] for d in districts_order] + [state_score]
+        #     with open(os.path.join(output_dir, "plans", f"{step + 1}.pickle"), "wb") as f:
+        #         partition = pickle.dump((partition, districts_order), f)
+        # scores_df.to_csv(os.path.join(output_dir, "scores.csv"))
 
         print("Using existing partitions and scores.")
         scores_df = pd.read_csv(os.path.join(output_dir, "scores.csv"))
@@ -367,55 +368,55 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     # metric (in this case standard deviation of republican vote share). This uses Welford's
     # algorithm to calculate mean and variance one at a time instead of saving all the values to
     # memory (there will be num_steps * len(graph.nodes) values. that is a lot.)
-    score_accumulator = Welford()
-    homogeneity_accumulator = Welford()
-    if verbose:
-        step_iter = tqdm(range(num_steps))
-    else:
-        step_iter = range(num_steps)
-    for i in step_iter:
-        with open(os.path.join(output_dir, "plans", f"{i + 1}.pickle"), "rb") as f:
-            partition, district_order = pickle.load(f)
+    # score_accumulator = Welford()
+    # homogeneity_accumulator = Welford()
+    # if verbose:
+    #     step_iter = tqdm(range(num_steps))
+    # else:
+    #     step_iter = range(num_steps)
+    # for i in step_iter:
+    #     with open(os.path.join(output_dir, "plans", f"{i + 1}.pickle"), "rb") as f:
+    #         partition, district_order = pickle.load(f)
 
-        part_values = {}  # part: (score, homogeneity)
-        for part in partition.parts:
-            score = scores_df.loc[i, f"district {district_order.index(part) + 1}"]
-            homogeneity = statistics.stdev(
-                [graph.nodes[node]["total_rep"] / graph.nodes[node]["total_votes"]
-                 for node in partition.parts[part]]
-            )
-            part_values[part] = (score, homogeneity)
-        score_sample = np.zeros((len(sorted_node_names),))
-        homogeneity_sample = np.zeros((len(sorted_node_names),))
-        for j, precinct in enumerate(sorted_node_names):
-            score_sample[j] = part_values[partition.assignment[precinct]][0]
-            homogeneity_sample[j] = part_values[partition.assignment[precinct]][1]
-        score_accumulator.add(score_sample)
-        homogeneity_accumulator.add(homogeneity_sample)
+    #     part_values = {}  # part: (score, homogeneity)
+    #     for part in partition.parts:
+    #         score = scores_df.loc[i, f"district {district_order.index(part) + 1}"]
+    #         homogeneity = statistics.stdev(
+    #             [graph.nodes[node]["total_rep"] / graph.nodes[node]["total_votes"]
+    #              for node in partition.parts[part]]
+    #         )
+    #         part_values[part] = (score, homogeneity)
+    #     score_sample = np.zeros((len(sorted_node_names),))
+    #     homogeneity_sample = np.zeros((len(sorted_node_names),))
+    #     for j, precinct in enumerate(sorted_node_names):
+    #         score_sample[j] = part_values[partition.assignment[precinct]][0]
+    #         homogeneity_sample[j] = part_values[partition.assignment[precinct]][1]
+    #     score_accumulator.add(score_sample)
+    #     homogeneity_accumulator.add(homogeneity_sample)
 
         # Visualize 100 partitions, or however many there are if there are less than 100.
-        if num_steps >= 100:
-            visualize = i % (num_steps // 100) == 0
-        else:
-            visualize = True
-        if visualize:
-            visualize_partition_geopandas(
-                partition, graph=graph, img_path=os.path.join(output_dir, "visuals", f"{i + 1}.png"))
+        # if num_steps >= 100:
+        #     visualize = i % (num_steps // 100) == 0
+        # else:
+        #     visualize = True
+        # if visualize:
+        #     visualize_partition_geopandas(
+        #         partition, graph=graph, img_path=os.path.join(output_dir, "visuals", f"{i + 1}.png"))
 
     if verbose:
         print("Evaluating inputted district map...", end="")
         sys.stdout.flush()
 
-    precinct_df = pd.DataFrame(columns=["avg_score", "stdev_score", "avg_homogeneity",
-                                        "stdev_homogeneity"],
-                               index=sorted_node_names)
-    for i, precinct in enumerate(sorted_node_names):
-        precinct_df.loc[precinct] = [
-            score_accumulator.mean[i],
-            math.sqrt(score_accumulator.var_s[i]),
-            homogeneity_accumulator.mean[i],
-            math.sqrt(homogeneity_accumulator.var_s[i])
-        ]
+    # precinct_df = pd.DataFrame(columns=["avg_score", "stdev_score", "avg_homogeneity",
+    #                                     "stdev_homogeneity"],
+    #                            index=sorted_node_names)
+    # for i, precinct in enumerate(sorted_node_names):
+    #     precinct_df.loc[precinct] = [
+    #         score_accumulator.mean[i],
+    #         math.sqrt(score_accumulator.var_s[i]),
+    #         homogeneity_accumulator.mean[i],
+    #         math.sqrt(homogeneity_accumulator.var_s[i])
+    #     ]
 
     districts_precinct_df = pd.DataFrame(columns=["score", "homogeneity"], index=sorted_node_names)
     if isinstance(district_file, str):
@@ -423,6 +424,7 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     else:
         district_node_sets = district_file
     district_scores, state_score = quantify_gerrymandering(graph, district_node_sets, node_differences, verbose)
+    print(sorted(district_scores.items()), state_score)
     for district, precincts in district_node_sets.items():
         homogeneity = statistics.stdev(
             [graph.nodes[node]["total_rep"] / graph.nodes[node]["total_votes"]
@@ -430,7 +432,14 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         )
         for precinct in precincts:
             districts_precinct_df.loc[precinct] = [district_scores[district], homogeneity]
-
+    
+    # precinct_df.index.rename("precinct", inplace=True)
+    districts_precinct_df.index.rename("precinct", inplace=True)
+    # precinct_df.to_csv(os.path.join(output_dir, "precinct_scores.csv"))
+    districts_precinct_df.to_csv(os.path.join(output_dir, "district_scores.csv"))
+    
+    precinct_df = pd.read_csv(os.path.join(output_dir, "precinct_scores.csv"), index_col="precinct")
+    districts_precinct_df = pd.read_csv(os.path.join(output_dir, "district_scores.csv"), index_col="precinct")
     if vis_dir:
         create_folder(vis_dir)
     else:
@@ -456,6 +465,37 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
             districts_assignment[node] = district
     districts_partition = Partition(graph, assignment=districts_assignment)
 
+    z_score_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["#1D8634", "#f0ebd8", "#c90000"])
+    # raw_score_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["white", "purple"])
+    # raw_score_colormap = "rainbow"
+    # colormap = "coolwarm"
+
+    _, ax = plt.subplots(figsize=(12.8, 9.6))
+    visualize_gradient_geopandas(
+        sorted_node_names,
+        get_value=lambda precinct: districts_precinct_df.loc[precinct, "score"],
+        get_geometry=lambda p: graph.nodes[p]["geometry"],
+        clear=False,
+        ax=ax,
+        legend=True,
+        # cmap=raw_score_colormap,
+        vmin=0.15, 
+        vmax=0.3,
+        # img_path=os.path.join(output_dir, "gradient_score.png")
+    )
+    visualize_partition_geopandas(
+        districts_partition,
+        union=True,
+        img_path=os.path.join(vis_dir, "district_scores.png"),
+        clear=True,
+        ax=ax,
+        facecolor="none",
+        edgecolor="black",
+        linewidth=0.5,
+        # cmap=raw_score_colormap,
+    )
+    if verbose:
+        print("District raw scores map generated")
     _, ax = plt.subplots(figsize=(12.8, 9.6))
     visualize_gradient_geopandas(
         sorted_node_names,
@@ -464,6 +504,9 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         clear=False,
         ax=ax,
         legend=True,
+        vmin=-9, 
+        vmax=9,
+        cmap=z_score_colormap,
         # img_path=os.path.join(output_dir, "gradient_score.png")
     )
     visualize_partition_geopandas(
@@ -474,39 +517,47 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         ax=ax,
         facecolor="none",
         edgecolor="black",
-        linewidth=0.5
+        linewidth=0.5,
+        # cmap=z_score_colormap,
     )
+    if verbose:
+        print("Gerry scores generated")
+    # _, ax = plt.subplots(figsize=(12.8, 9.6))
+    # visualize_gradient_geopandas(
+    #     sorted_node_names,
+    #     get_value=partial(get_z_score, metric="homogeneity"),
+    #     get_geometry=lambda p: graph.nodes[p]["geometry"],
+    #     clear=False,
+    #     ax=ax,
+    #     legend=True,
+    #     cmap=z_score_colormap
+    # )
+    # visualize_partition_geopandas(
+    #     districts_partition,
+    #     union=True,
+    #     img_path=os.path.join(vis_dir, "packing_cracking.png"),
+    #     clear=True,
+    #     ax=ax,
+    #     facecolor="none",
+    #     edgecolor="black",
+    #     linewidth=0.5,
+    #     cmap=z_score_colormap,
 
-    _, ax = plt.subplots(figsize=(12.8, 9.6))
-    visualize_gradient_geopandas(
-        sorted_node_names,
-        get_value=partial(get_z_score, metric="homogeneity"),
-        get_geometry=lambda p: graph.nodes[p]["geometry"],
-        clear=False,
-        ax=ax,
-        legend=True
-    )
-    visualize_partition_geopandas(
-        districts_partition,
-        union=True,
-        img_path=os.path.join(vis_dir, "packing_cracking.png"),
-        clear=True,
-        ax=ax,
-        facecolor="none",
-        edgecolor="black",
-        linewidth=0.5
-    )
+    # )
 
     _, ax = plt.subplots(figsize=(12.8, 9.6))
     visualize_gradient_geopandas(
         sorted_node_names,
         get_value=lambda u: precinct_df.loc[u, "avg_score"],
         get_geometry=lambda u: graph.nodes[u]["geometry"],
-        vmax=max(district_scores.values()),
-        vmin=min(district_scores.values()),
+        # vmax=max(district_scores.values()),
+        vmax=0.3,
+        # vmin=min(district_scores.values()),
+        vmin=0.15,
         img_path=os.path.join(vis_dir, "raw_scores.png"),
         ax=ax,
-        legend=True
+        legend=True,
+        # cmap=raw_score_colormap,
     )
 
     if verbose:

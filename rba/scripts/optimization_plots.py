@@ -50,7 +50,7 @@ if __name__ == "__main__":
     plt.clf()
 
     # Gerrymandering heatmap for the best map
-    with open(os.path.join(optimize_dir, f"Plan_10.json"), "r") as f:
+    with open(os.path.join(optimize_dir, f"Plan_1.json"), "r") as f:
         parts = json.load(f)
 
     ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, num_districts,

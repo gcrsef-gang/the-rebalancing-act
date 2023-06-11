@@ -639,7 +639,7 @@ def visualize_graph(graph, output_path, coords, colors=None, edge_colors=None, n
     if node_sizes is not None:
         node_sizes = [node_sizes(node) for node in graph_nodes]
     else:
-        node_sizes = [1 for _ in graph_nodes]
+        node_sizes = [5 for _ in graph_nodes]
 
     for edge in graph_edges:
 
@@ -698,11 +698,41 @@ def visualize(output_file, graph_file, difference_file, num_frames, partition_fi
 #         supercommunity_output = json.load(f)
 
 if __name__ == "__main__":
-
     # If called from the command line, it is
     # assumed that the node attributes are precincts.
 
     with open(sys.argv[1], "rb") as f:
         graph = nx.readwrite.json_graph.adjacency_graph(json.load(f))
+    sorted_node_names = sorted(list(graph.nodes))
 
-    visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"])
+    # Difference scores
+    # with open(sys.argv[2], "r") as f:
+    #     difference_data = json.load(f)
+    # node_differences = {}
+    # for edge, lifetime in difference_data.items():
+    #     u = edge.split(",")[0][2:-1]
+    #     v = edge.split(",")[1][2:-2]
+    #     node_differences[frozenset((u, v))] = lifetime
+    # _, ax = plt.subplots(figsize=(12.8, 9.6))
+
+    # def difference_score_gradient(precinct, u):
+    #     if u == precinct:
+    #         return 0
+    #     else:
+    #         return node_differences[frozenset((precinct, u))]
+        
+    # visualize_gradient_geopandas(
+    #     sorted_node_names,
+    #     get_value=lambda u: difference_score_gradient("3719124", u),
+    #     get_geometry=lambda u: graph.nodes[u]["geometry"],
+    #     # vmax=max(district_scores.values()),
+    #     # vmax=0.3,
+    #     # vmin=min(district_scores.values()),
+    #     # vmin=0.15,
+    #     img_path=sys.argv[3],
+    #     ax=ax,
+    #     legend=True,
+    #     # cmap=raw_score_colormap,
+    # )
+
+    # visualize_graph(graph, sys.argv[2], lambda node: shapely.geometry.mapping(shapely.geometry.shape(graph.nodes[node]['geometry']).centroid)["coordinates"])

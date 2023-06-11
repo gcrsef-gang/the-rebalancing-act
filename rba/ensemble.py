@@ -357,6 +357,8 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
 
         print("Using existing partitions and scores.")
         scores_df = pd.read_csv(os.path.join(output_dir, "scores.csv"))
+        print(scores_df["state_gerry_score"].std())
+        print(scores_df["state_gerry_score"].mean())
 
     create_folder(os.path.join(output_dir, "visuals"))
 
@@ -368,31 +370,33 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
     # metric (in this case standard deviation of republican vote share). This uses Welford's
     # algorithm to calculate mean and variance one at a time instead of saving all the values to
     # memory (there will be num_steps * len(graph.nodes) values. that is a lot.)
-    # score_accumulator = Welford()
-    # homogeneity_accumulator = Welford()
-    # if verbose:
-    #     step_iter = tqdm(range(num_steps))
-    # else:
-    #     step_iter = range(num_steps)
-    # for i in step_iter:
-    #     with open(os.path.join(output_dir, "plans", f"{i + 1}.pickle"), "rb") as f:
-    #         partition, district_order = pickle.load(f)
+    score_accumulator = Welford()
+    homogeneity_accumulator = Welford()
+    precinct_scores = []
+    if verbose:
+        step_iter = tqdm(range(num_steps))
+    else:
+        step_iter = range(num_steps)
+    for i in step_iter:
+        with open(os.path.join(output_dir, "plans", f"{i + 1}.pickle"), "rb") as f:
+            partition, district_order = pickle.load(f)
 
-    #     part_values = {}  # part: (score, homogeneity)
-    #     for part in partition.parts:
-    #         score = scores_df.loc[i, f"district {district_order.index(part) + 1}"]
-    #         homogeneity = statistics.stdev(
-    #             [graph.nodes[node]["total_rep"] / graph.nodes[node]["total_votes"]
-    #              for node in partition.parts[part]]
-    #         )
-    #         part_values[part] = (score, homogeneity)
-    #     score_sample = np.zeros((len(sorted_node_names),))
-    #     homogeneity_sample = np.zeros((len(sorted_node_names),))
-    #     for j, precinct in enumerate(sorted_node_names):
-    #         score_sample[j] = part_values[partition.assignment[precinct]][0]
-    #         homogeneity_sample[j] = part_values[partition.assignment[precinct]][1]
-    #     score_accumulator.add(score_sample)
-    #     homogeneity_accumulator.add(homogeneity_sample)
+        part_values = {}  # part: (score, homogeneity)
+        for part in partition.parts:
+            score = scores_df.loc[i, f"district {district_order.index(part) + 1}"]
+            homogeneity = statistics.stdev(
+                [graph.nodes[node]["total_rep"] / graph.nodes[node]["total_votes"]
+                 for node in partition.parts[part]]
+            )
+            part_values[part] = (score, homogeneity)
+        score_sample = np.zeros((len(sorted_node_names),))
+        homogeneity_sample = np.zeros((len(sorted_node_names),))
+        for j, precinct in enumerate(sorted_node_names):
+            score_sample[j] = part_values[partition.assignment[precinct]][0]
+            homogeneity_sample[j] = part_values[partition.assignment[precinct]][1]
+        score_accumulator.add(score_sample)
+        homogeneity_accumulator.add(homogeneity_sample)
+        precinct_scores.append(part_values[partition.assignment["37033LOCU"]][0])
 
         # Visualize 100 partitions, or however many there are if there are less than 100.
         # if num_steps >= 100:
@@ -402,21 +406,25 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         # if visualize:
         #     visualize_partition_geopandas(
         #         partition, graph=graph, img_path=os.path.join(output_dir, "visuals", f"{i + 1}.png"))
+    plt.hist(precinct_scores, bins=30)
+    plt.axvline(sum(precinct_scores)/len(precinct_scores), color='k', linestyle='dashed', linewidth=1)
+    # # plt.axvline(state_score, color='red', linestyle='solid', linewidth=1)
+    plt.savefig(os.path.join(vis_dir, "37033LOCU_score_distribution.png"))
 
     if verbose:
         print("Evaluating inputted district map...", end="")
         sys.stdout.flush()
 
-    # precinct_df = pd.DataFrame(columns=["avg_score", "stdev_score", "avg_homogeneity",
-    #                                     "stdev_homogeneity"],
-    #                            index=sorted_node_names)
-    # for i, precinct in enumerate(sorted_node_names):
-    #     precinct_df.loc[precinct] = [
-    #         score_accumulator.mean[i],
-    #         math.sqrt(score_accumulator.var_s[i]),
-    #         homogeneity_accumulator.mean[i],
-    #         math.sqrt(homogeneity_accumulator.var_s[i])
-    #     ]
+    precinct_df = pd.DataFrame(columns=["avg_score", "stdev_score", "avg_homogeneity",
+                                        "stdev_homogeneity"],
+                               index=sorted_node_names)
+    for i, precinct in enumerate(sorted_node_names):
+        precinct_df.loc[precinct] = [
+            score_accumulator.mean[i],
+            math.sqrt(score_accumulator.var_s[i]),
+            homogeneity_accumulator.mean[i],
+            math.sqrt(homogeneity_accumulator.var_s[i])
+        ]
 
     districts_precinct_df = pd.DataFrame(columns=["score", "homogeneity"], index=sorted_node_names)
     if isinstance(district_file, str):
@@ -433,13 +441,15 @@ def ensemble_analysis(graph_file, difference_file, vra_config_file, num_steps, n
         for precinct in precincts:
             districts_precinct_df.loc[precinct] = [district_scores[district], homogeneity]
     
-    # precinct_df.index.rename("precinct", inplace=True)
+    precinct_df.index.rename("precinct", inplace=True)
     districts_precinct_df.index.rename("precinct", inplace=True)
-    # precinct_df.to_csv(os.path.join(output_dir, "precinct_scores.csv"))
+    precinct_df.to_csv(os.path.join(output_dir, "precinct_scores.csv"))
     districts_precinct_df.to_csv(os.path.join(output_dir, "district_scores.csv"))
     
     precinct_df = pd.read_csv(os.path.join(output_dir, "precinct_scores.csv"), index_col="precinct")
+    precinct_df.index = precinct_df.index.astype('str')
     districts_precinct_df = pd.read_csv(os.path.join(output_dir, "district_scores.csv"), index_col="precinct")
+    districts_precinct_df.index = districts_precinct_df.index.astype('str')
     if vis_dir:
         create_folder(vis_dir)
     else:
